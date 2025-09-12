@@ -8,7 +8,6 @@ using Nethereum.Util;
 using Nethereum.Web3;
 using RZPrime.Domain.Collections;
 using RZPrime.DTOs.Contracts;
-using RZPrime.Services._BlockChain;
 using RZPrime.Services._BlockChainWebSocket.DTOs;
 using RZPrime.Services._Inventory;
 using RZPrime.Services._Price.DTOs.Settings;
