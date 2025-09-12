@@ -1,0 +1,9 @@
+﻿using RZPrime.Domain.Collections;
+using RZPrime.Utilities.MongoDatabase.Contracts;
+
+namespace RZPrime.Domain.Repositories.Contracts
+{
+    public interface ITransactionLogRepository : IMonjoRepository<TransactionLog>
+    {
+    }
+}

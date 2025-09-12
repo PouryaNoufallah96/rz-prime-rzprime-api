@@ -1,0 +1,49 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.10.35122.118
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "RZPrime.Api", "RZPrime.Api\RZPrime.Api.csproj", "{CA767719-0018-4D72-B891-F28131A4B051}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "RZPrime.Utilities", "RZPrime.Utilities\RZPrime.Utilities.csproj", "{954D54AE-C796-4278-B84F-5ED3F47592EB}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "RZPrime.Domain", "RZPrime.Domin\RZPrime.Domain.csproj", "{5F5D9B5F-A515-4FA8-B64B-70C4A6991A91}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "RZPrime.Services", "RZPrime.Services\RZPrime.Services.csproj", "{9F807536-61BE-4E5C-BB44-E0165F0B24BA}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "RZPrime.Schedulers", "RZPrime.Schedulers\RZPrime.Schedulers.csproj", "{94C44AC8-3C39-45D5-9980-4759B410FA7A}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{CA767719-0018-4D72-B891-F28131A4B051}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CA767719-0018-4D72-B891-F28131A4B051}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CA767719-0018-4D72-B891-F28131A4B051}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CA767719-0018-4D72-B891-F28131A4B051}.Release|Any CPU.Build.0 = Release|Any CPU
+		{954D54AE-C796-4278-B84F-5ED3F47592EB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{954D54AE-C796-4278-B84F-5ED3F47592EB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{954D54AE-C796-4278-B84F-5ED3F47592EB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{954D54AE-C796-4278-B84F-5ED3F47592EB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5F5D9B5F-A515-4FA8-B64B-70C4A6991A91}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5F5D9B5F-A515-4FA8-B64B-70C4A6991A91}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5F5D9B5F-A515-4FA8-B64B-70C4A6991A91}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5F5D9B5F-A515-4FA8-B64B-70C4A6991A91}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9F807536-61BE-4E5C-BB44-E0165F0B24BA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9F807536-61BE-4E5C-BB44-E0165F0B24BA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9F807536-61BE-4E5C-BB44-E0165F0B24BA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9F807536-61BE-4E5C-BB44-E0165F0B24BA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{94C44AC8-3C39-45D5-9980-4759B410FA7A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{94C44AC8-3C39-45D5-9980-4759B410FA7A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{94C44AC8-3C39-45D5-9980-4759B410FA7A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{94C44AC8-3C39-45D5-9980-4759B410FA7A}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {E2DF842E-A200-4839-8455-5B607053A7DC}
+	EndGlobalSection
+EndGlobal

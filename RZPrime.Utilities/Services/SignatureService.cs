@@ -1,0 +1,22 @@
+﻿using RZPrime.Utilities.Services.Contracts;
+using System.Security.Cryptography;
+using static RZPrime.Utilities.Constants.RegisterMode;
+
+namespace RZPrime.Utilities.Services
+{
+    public class SignatureService : ISignatureService, IScopedDependency
+    {
+        public byte[] Sign(byte[] key, byte[] data)
+        {
+            using var hmac = new HMACSHA256(key);
+            return hmac.ComputeHash(data);
+        }
+        public bool Verify(byte[] key, byte[] data, byte[] signature)
+        {
+            using HMACSHA256 hmac = new(key);
+            byte[] computedHash = hmac.ComputeHash(data);
+            return computedHash.SequenceEqual(signature);
+
+        }
+    }
+}

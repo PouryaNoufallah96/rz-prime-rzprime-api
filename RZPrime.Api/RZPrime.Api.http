@@ -1,0 +1,6 @@
+@RZPrime.Api_HostAddress = http://localhost:5136
+
+GET {{RZPrime.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

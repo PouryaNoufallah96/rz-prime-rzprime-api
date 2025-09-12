@@ -1,0 +1,49 @@
+﻿using Autofac;
+using static RZPrime.Utilities.Constants.RegisterMode;
+using System.Reflection;
+using RZPrime.Domain.Repositories.Contracts;
+using RZPrime.Services._User;
+using RZPrime.Schedulers;
+
+
+namespace RZPrime.Api.Utilities.Configurations
+{
+    public static class ControllerAutofacConfigurationExtensions
+    {
+        public static void AddControllerServices(this ContainerBuilder containerBuilder)
+        {
+            var assembliesToRegister = new Assembly[]
+            {
+                typeof(IUserRepository).Assembly,
+                typeof(IUserService).Assembly,
+                typeof(PriceScheduler).Assembly,
+            };
+
+            containerBuilder.RegisterAssemblyTypes(assembliesToRegister)
+                .AssignableTo<IScopedDependency>()
+                .AsImplementedInterfaces()
+                .InstancePerLifetimeScope();
+
+            containerBuilder.RegisterAssemblyTypes(assembliesToRegister)
+                .AssignableTo<ITransientDependency>()
+                .AsImplementedInterfaces()
+                .InstancePerDependency();
+
+            containerBuilder.RegisterAssemblyTypes(assembliesToRegister)
+                .AssignableTo<ISingletonDependency>()
+                .AsImplementedInterfaces()
+                .SingleInstance();
+
+            containerBuilder.RegisterAssemblyTypes(assembliesToRegister)
+               .AssignableTo<ISelfSingletonDependency>()
+               .AsSelf()
+               .SingleInstance();
+
+            containerBuilder.RegisterAssemblyTypes(assembliesToRegister)
+              .AssignableTo<IHostedDependency>()
+              .As<IHostedService>()
+              .SingleInstance();
+        }
+
+    }
+}
