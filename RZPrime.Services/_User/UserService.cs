@@ -148,7 +148,7 @@ namespace RZPrime.Services._User
                 return await ActivateWithCodeAsync(update);
             }
 
-            throw new BadRequestException();
+            throw new BadRequestException("wrong data!");
         }
 
         private async Task<bool> ActivateWithCodeAsync(ActivateNonceRequest update)
@@ -242,7 +242,7 @@ namespace RZPrime.Services._User
             {
                 if (user.WalletAddress.ToLower() != walletAddress.ToLower())
                 {
-                    throw new BadRequestException();
+                    throw new BadRequestException("RZ Prime allows only one wallet address per device!");
                 }
             }
         }
