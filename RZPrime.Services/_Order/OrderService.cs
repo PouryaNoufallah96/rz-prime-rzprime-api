@@ -55,6 +55,9 @@ namespace RZPrime.Services._Order
         /// <exception cref="BaseException"></exception>
         public async Task<SubmitOrderResponseResult> SubmitOrderAsync(SubmitOrderUpdate update, string userPublicKey, string walletAddress)
         {
+            if (update.SelectedStage != UserStageType.Regular) throw new BadRequestException("Selected stage is not available!");
+            if (update.MonthDuration > 3) throw new BadRequestException("Maximum of Month duration is Three month");
+
             var tokenData = ValidateToken(update.TokenName);
             var stageSetting = GetStageSetting(update.SelectedStage);
             var userStageId = await ValidateStageAsync(walletAddress, userPublicKey, stageSetting, update);
