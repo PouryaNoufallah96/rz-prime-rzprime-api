@@ -58,8 +58,8 @@ namespace RZPrime.Services._Price
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error fetching price for {tokenName.ToUpper()}: {ex.Message}");
-                return null;
+                Console.WriteLine($"Error fetching price in RZ for {tokenName.ToUpper()}: {ex.Message}");
+                return await FetchTokenPriceFromGeckoTerminalAsync(tokenName);
             }
         }
 
@@ -132,6 +132,62 @@ namespace RZPrime.Services._Price
             }
         }
 
+        /// <summary>
+        /// this method use for fetch price data with token name
+        /// </summary>
+        /// <param name="tokenName"></param>
+        /// <param name="poolId"></param>
+        /// <returns></returns>
+        public async Task<PriceResult> FetchTokenPriceFromGeckoTerminalAsync(string tokenName, string poolId = null)
+        {
+            var pool = poolId == null ? _availableTokenDatas.FirstOrDefault(q => q.Name == tokenName.ToUpper()).PoolId : poolId;
+            string url = $"https://api.geckoterminal.com/api/v2/networks/bsc/pools/{pool}";
+
+            try
+            {
+                var response = await _httpClient.GetAsync(url);
+                response.EnsureSuccessStatusCode();
+
+                var jsonString = await response.Content.ReadAsStringAsync();
+                //_logger.LogInformation(jsonString);
+                using JsonDocument doc = JsonDocument.Parse(jsonString);
+
+                // Go into data → attributes
+                var attributes = doc.RootElement
+                    .GetProperty("data")
+                    .GetProperty("attributes");
+
+                decimal basePrice = decimal.Parse(attributes.GetProperty("base_token_price_usd").GetString()!);
+                decimal quotePrice = decimal.Parse(attributes.GetProperty("quote_token_price_usd").GetString()!);
+
+                decimal liquidityUsd = decimal.Parse(attributes.GetProperty("reserve_in_usd").GetString()!);
+                decimal volume24h = decimal.Parse(attributes.GetProperty("volume_usd").GetProperty("h24").GetString()!);
+                decimal? poolFee = attributes.TryGetProperty("pool_fee_percentage", out var feeProp) && feeProp.ValueKind != JsonValueKind.Null
+                                   ? decimal.Parse(feeProp.GetString()!)
+                                   : (decimal?)null;
+
+                return new PriceResult
+                {
+                    //TokenAddress = attributes.GetProperty("address").GetString(),
+                    //TokenName = attributes.GetProperty("name").GetString(),
+                    TokenName = tokenName,
+                    TokenNetwork = "BSC",
+                    Price = basePrice,
+                    //LiquidityUsd = liquidityUsd,
+                    //Volume24hUsd = volume24h,
+                    //PoolFeeRate = poolFee,
+                    //ReserveBaseUsd = basePrice * liquidityUsd,
+                    //ReserveQuoteUsd = quotePrice * liquidityUsd,
+                    //QuoteTokenPriceUsd = quotePrice
+                };
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error fetching token price gecko for {poolId}: {ex.Message}");
+                return null;
+            }
+        }
+
         #region Methods for use Gecko Terminal
 
         //public class PriceResult
@@ -148,61 +204,7 @@ namespace RZPrime.Services._Price
         //    public decimal QuoteTokenPriceUsd { get; set; }
         //}
 
-        ///// <summary>
-        ///// this method use for fetch price data with token name
-        ///// </summary>
-        ///// <param name="tokenName"></param>
-        ///// <param name="poolId"></param>
-        ///// <returns></returns>
-        //public async Task<PriceResult> FetchTokenPriceFromGeckoTerminalAsync(string tokenName, string poolId = null)
-        //{
-        //    var pool = poolId == null ? _availableTokenDatas.FirstOrDefault(q => q.Name == tokenName.ToUpper()).PoolId : poolId;
-        //    string url = $"https://api.geckoterminal.com/api/v2/networks/bsc/pools/{pool}";
 
-        //    try 
-        //    {
-        //        var response = await _httpClient.GetAsync(url);
-        //        response.EnsureSuccessStatusCode();
-
-        //        var jsonString = await response.Content.ReadAsStringAsync();
-        //        //_logger.LogInformation(jsonString);
-        //        using JsonDocument doc = JsonDocument.Parse(jsonString);
-
-        //        // Go into data → attributes
-        //        var attributes = doc.RootElement
-        //            .GetProperty("data")
-        //            .GetProperty("attributes");
-
-        //        decimal basePrice = decimal.Parse(attributes.GetProperty("base_token_price_usd").GetString()!);
-        //        decimal quotePrice = decimal.Parse(attributes.GetProperty("quote_token_price_usd").GetString()!);
-
-        //        decimal liquidityUsd = decimal.Parse(attributes.GetProperty("reserve_in_usd").GetString()!);
-        //        decimal volume24h = decimal.Parse(attributes.GetProperty("volume_usd").GetProperty("h24").GetString()!);
-        //        decimal? poolFee = attributes.TryGetProperty("pool_fee_percentage", out var feeProp) && feeProp.ValueKind != JsonValueKind.Null
-        //                           ? decimal.Parse(feeProp.GetString()!)
-        //                           : (decimal?)null;
-
-        //        return new PriceResult
-        //        {
-        //            TokenAddress = attributes.GetProperty("address").GetString(),
-        //            //TokenName = attributes.GetProperty("name").GetString(),
-        //            TokenName = tokenName,
-        //            TokenNetwork = "BSC",
-        //            Price = basePrice,
-        //            LiquidityUsd = liquidityUsd,
-        //            Volume24hUsd = volume24h,
-        //            PoolFeeRate = poolFee,
-        //            ReserveBaseUsd = basePrice * liquidityUsd,
-        //            ReserveQuoteUsd = quotePrice * liquidityUsd,
-        //            QuoteTokenPriceUsd = quotePrice
-        //        };
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        Console.WriteLine($"Error fetching token price for {poolId}: {ex.Message}");
-        //        return null;
-        //    }
-        //}
 
 
         ///// <summary>
