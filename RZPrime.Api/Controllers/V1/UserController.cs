@@ -74,7 +74,7 @@ namespace RZPrime.Api.Controllers.V1
             if (string.IsNullOrEmpty(token))
                 return BadRequest("No token provided");
 
-            var expiry = DateTime.UtcNow.AddHours(1);
+            var expiry = DateTime.UtcNow.AddMinutes(15);
 
             _blacklist.AddToken(token, expiry);
 

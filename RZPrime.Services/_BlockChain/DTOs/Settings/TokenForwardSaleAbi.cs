@@ -6,8 +6,146 @@
     [
     {
         ""type"": ""function"",
+        ""name"": ""DROP_ORDER_TYPEHASH"",
+        ""inputs"": [],
+        ""outputs"": [
+            {
+                ""name"": """",
+                ""type"": ""bytes32"",
+                ""internalType"": ""bytes32""
+            }
+        ],
+        ""stateMutability"": ""view""
+    },
+    {
+        ""type"": ""function"",
+        ""name"": ""batchDropOrderBySig"",
+        ""inputs"": [
+            {
+                ""name"": ""users"",
+                ""type"": ""address[]"",
+                ""internalType"": ""address[]""
+            },
+            {
+                ""name"": ""orderIds"",
+                ""type"": ""string[]"",
+                ""internalType"": ""string[]""
+            },
+            {
+                ""name"": ""signatures"",
+                ""type"": ""bytes[]"",
+                ""internalType"": ""bytes[]""
+            }
+        ],
+        ""outputs"": [],
+        ""stateMutability"": ""nonpayable""
+    },
+    {
+        ""type"": ""function"",
+        ""name"": ""batchExpireOrder"",
+        ""inputs"": [
+            {
+                ""name"": ""users"",
+                ""type"": ""address[]"",
+                ""internalType"": ""address[]""
+            },
+            {
+                ""name"": ""orderIds"",
+                ""type"": ""string[]"",
+                ""internalType"": ""string[]""
+            }
+        ],
+        ""outputs"": [],
+        ""stateMutability"": ""nonpayable""
+    },
+    {
+        ""type"": ""function"",
+        ""name"": ""dropOrderBySig"",
+        ""inputs"": [
+            {
+                ""name"": ""user"",
+                ""type"": ""address"",
+                ""internalType"": ""address""
+            },
+            {
+                ""name"": ""orderId"",
+                ""type"": ""string"",
+                ""internalType"": ""string""
+            },
+            {
+                ""name"": ""signature"",
+                ""type"": ""bytes"",
+                ""internalType"": ""bytes""
+            }
+        ],
+        ""outputs"": [],
+        ""stateMutability"": ""nonpayable""
+    },
+    {
+        ""type"": ""function"",
+        ""name"": ""eip712Domain"",
+        ""inputs"": [],
+        ""outputs"": [
+            {
+                ""name"": ""fields"",
+                ""type"": ""bytes1"",
+                ""internalType"": ""bytes1""
+            },
+            {
+                ""name"": ""name"",
+                ""type"": ""string"",
+                ""internalType"": ""string""
+            },
+            {
+                ""name"": ""version"",
+                ""type"": ""string"",
+                ""internalType"": ""string""
+            },
+            {
+                ""name"": ""chainId"",
+                ""type"": ""uint256"",
+                ""internalType"": ""uint256""
+            },
+            {
+                ""name"": ""verifyingContract"",
+                ""type"": ""address"",
+                ""internalType"": ""address""
+            },
+            {
+                ""name"": ""salt"",
+                ""type"": ""bytes32"",
+                ""internalType"": ""bytes32""
+            },
+            {
+                ""name"": ""extensions"",
+                ""type"": ""uint256[]"",
+                ""internalType"": ""uint256[]""
+            }
+        ],
+        ""stateMutability"": ""view""
+    },
+    {
+        ""type"": ""function"",
         ""name"": ""executeOrder"",
         ""inputs"": [
+            {
+                ""name"": ""orderId"",
+                ""type"": ""string"",
+                ""internalType"": ""string""
+            }
+        ],
+        ""outputs"": [],
+        ""stateMutability"": ""nonpayable""
+    },
+    {
+        ""type"": ""function"",
+        ""name"": ""expireOrder"",
+        ""inputs"": [
+            {
+                ""name"": ""user"",
+                ""type"": ""address"",
+                ""internalType"": ""address""
+            },
             {
                 ""name"": ""orderId"",
                 ""type"": ""string"",
@@ -36,7 +174,7 @@
             {
                 ""name"": """",
                 ""type"": ""tuple"",
-                ""internalType"": ""struct TokenForwardSale.Order"",
+                ""internalType"": ""struct RZPrimeSale.Order"",
                 ""components"": [
                     {
                         ""name"": ""buyToken"",
@@ -61,7 +199,7 @@
                     {
                         ""name"": ""status"",
                         ""type"": ""uint8"",
-                        ""internalType"": ""enum TokenForwardSale.OrderStatus""
+                        ""internalType"": ""enum RZPrimeSale.OrderStatus""
                     }
                 ]
             }
@@ -107,20 +245,58 @@
         ""stateMutability"": ""nonpayable""
     },
     {
-        ""type"": ""event"",
-        ""name"": ""OrderExecuted"",
+        ""type"": ""function"",
+        ""name"": ""reservedTokenAmounts"",
         ""inputs"": [
             {
-                ""name"": ""orderId"",
-                ""type"": ""string"",
-                ""indexed"": false,
-                ""internalType"": ""string""
-            },
+                ""name"": ""token"",
+                ""type"": ""address"",
+                ""internalType"": ""address""
+            }
+        ],
+        ""outputs"": [
+            {
+                ""name"": ""amounts"",
+                ""type"": ""uint256"",
+                ""internalType"": ""uint256""
+            }
+        ],
+        ""stateMutability"": ""view""
+    },
+    {
+        ""type"": ""event"",
+        ""name"": ""OrderDropped"",
+        ""inputs"": [
             {
                 ""name"": ""user"",
                 ""type"": ""address"",
                 ""indexed"": false,
                 ""internalType"": ""address""
+            },
+            {
+                ""name"": ""orderId"",
+                ""type"": ""string"",
+                ""indexed"": false,
+                ""internalType"": ""string""
+            }
+        ],
+        ""anonymous"": false
+    },
+    {
+        ""type"": ""event"",
+        ""name"": ""OrderExecuted"",
+        ""inputs"": [
+            {
+                ""name"": ""user"",
+                ""type"": ""address"",
+                ""indexed"": false,
+                ""internalType"": ""address""
+            },
+            {
+                ""name"": ""orderId"",
+                ""type"": ""string"",
+                ""indexed"": false,
+                ""internalType"": ""string""
             },
             {
                 ""name"": ""payAmount"",
@@ -133,19 +309,38 @@
     },
     {
         ""type"": ""event"",
-        ""name"": ""OrderRegistered"",
+        ""name"": ""OrderExpired"",
         ""inputs"": [
-            {
-                ""name"": ""orderId"",
-                ""type"": ""string"",
-                ""indexed"": false,
-                ""internalType"": ""string""
-            },
             {
                 ""name"": ""user"",
                 ""type"": ""address"",
                 ""indexed"": false,
                 ""internalType"": ""address""
+            },
+            {
+                ""name"": ""orderId"",
+                ""type"": ""string"",
+                ""indexed"": false,
+                ""internalType"": ""string""
+            }
+        ],
+        ""anonymous"": false
+    },
+    {
+        ""type"": ""event"",
+        ""name"": ""OrderRegistered"",
+        ""inputs"": [
+            {
+                ""name"": ""user"",
+                ""type"": ""address"",
+                ""indexed"": false,
+                ""internalType"": ""address""
+            },
+            {
+                ""name"": ""orderId"",
+                ""type"": ""string"",
+                ""indexed"": false,
+                ""internalType"": ""string""
             },
             {
                 ""name"": ""tokenAmount"",
