@@ -371,7 +371,7 @@ namespace RZPrime.Services._Order
         public async Task SignDropsAsync()
         {
             var dropsForSign = await _orderRepository.AsQueryable()
-                .Where(q => q.DropSignature != null && q.DropTransactionHash == null).ToListAsync();
+                .Where(q => q.State == OrderState.Drop && q.DropSignature != null && q.DropTransactionHash == null).ToListAsync();
 
             if (dropsForSign.Count > 0)
             {

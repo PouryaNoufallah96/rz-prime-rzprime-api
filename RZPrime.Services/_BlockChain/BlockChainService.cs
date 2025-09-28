@@ -231,7 +231,7 @@ public class BlockChainService : IBlockChainService, ISingletonDependency
                 .ToArray();
 
             var signatures = ordersForDrop
-                .Select(o => o.DropSignature)
+                .Select(o => o.DropSignature.HexToByteArray())
                 .ToArray();
 
             var batchDropFunction = _contract.GetFunction("batchDropOrderBySig");
