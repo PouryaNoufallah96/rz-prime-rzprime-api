@@ -17,13 +17,10 @@ using RZPrime.Utilities.Utilities;
 using RZPrime.Utilities.Exceptions.Common;
 using RZPrime.Services._PancakeSwap;
 using RZPrime.Services._Price.DTOs.Results;
-using Nethereum.Model;
 using Microsoft.AspNetCore.SignalR;
 using Nethereum.RPC.Eth.DTOs;
 using RZPrime.Services._BlockChainWebSocket.DTOs;
-using Nethereum.Contracts;
 using RZPrime.Services._TransactionLog.DTOs;
-using System.Diagnostics;
 using RZPrime.Services._TransactionLog;
 using Nethereum.Web3;
 using Microsoft.Extensions.Logging;
@@ -164,6 +161,8 @@ namespace RZPrime.Services._Order
             var selectedStage = userStages.FirstOrDefault(q => q.Stage == order.Stage) ?? throw new NotFoundException("user stage not found!");
             if (selectedStage.AvailableDrop <= 0) throw new BadRequestException("No available drops left for this stage.");
 
+            order.DropSignature = update.Signature;
+            order.DropTransactionHash = null;
             order.State = OrderState.Drop;
             order.ChangeStateMoment = DateTime.UtcNow;
             await _orderRepository.ReplaceOneAsync(order);
@@ -369,6 +368,29 @@ namespace RZPrime.Services._Order
         }
 
 
+        public async Task SignDropsAsync()
+        {
+            var dropsForSign = await _orderRepository.AsQueryable()
+                .Where(q => q.DropSignature != null && q.DropTransactionHash == null).ToListAsync();
+
+            if (dropsForSign.Count > 0)
+            {
+                var txHash = await _blockChainService.SignDropOnBlockChainAsync(dropsForSign);
+
+                if (!string.IsNullOrEmpty(txHash))
+                {
+                    var orderIds = dropsForSign.Select(q => q.OrderId).ToList();
+
+                    var filter = Builders<Order>.Filter.In(o => o.OrderId, orderIds);
+                    var update = Builders<Order>.Update.Set(o => o.DropTransactionHash, txHash);
+
+                    var result = await _orderRepository.UpdateManyAsync(filter, update);
+
+                    _logger.LogInformation("Updated {MatchedCount} orders with DropTransactionHash {TxHash}",
+                        result.MatchedCount, txHash);
+                }
+            }
+        }
 
 
 
@@ -658,6 +680,7 @@ namespace RZPrime.Services._Order
                 .SumAsync(q => q.TokenAmount);
         }
 
+       
 
 
         #endregion

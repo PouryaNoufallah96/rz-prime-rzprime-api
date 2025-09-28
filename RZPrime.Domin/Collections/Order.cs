@@ -1,4 +1,5 @@
-﻿using RZPrime.Utilities.Attributes;
+﻿using MongoDB.Bson.Serialization.Attributes;
+using RZPrime.Utilities.Attributes;
 using RZPrime.Utilities.MongoDatabase.Documents;
 
 namespace RZPrime.Domain.Collections
@@ -36,8 +37,11 @@ namespace RZPrime.Domain.Collections
         public List<string> Exceptions { get; set; }
         public string RegisterHash { get; set; }
         public List<OrderTransactionMeta> TransactionsMetaData { get; set; } = [];
-    }
 
+        [BsonDefaultValue(null)] public string DropSignature { get; set; } = null;
+        [BsonDefaultValue(null)] public string DropTransactionHash { get; set; } = null; 
+    }
+     
 
     public class OrderTransactionMeta
     {

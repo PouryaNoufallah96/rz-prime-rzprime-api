@@ -21,6 +21,8 @@ namespace RZPrime.Services._BlockChain
            string orderId,
            BigInteger fromBlock = default);
 
+        Task<string> SignDropOnBlockChainAsync(List<Order> ordersForDrop);
+
         Task<Dictionary<string, decimal>> GetContractBalancesAsync();
         Task<decimal> GetContractSingleBalanceAsync(string tokenName);
         Task<Dictionary<string, decimal>> GetBalancesMultiCallAsync();

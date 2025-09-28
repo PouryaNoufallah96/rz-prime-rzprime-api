@@ -162,7 +162,6 @@ public class BlockChainService : IBlockChainService, ISingletonDependency
         }
     }
 
-
     public async Task<TransactionResult> ExecuteOrderOnBlockchainAsync(string orderId)
     {
         try
@@ -214,6 +213,64 @@ public class BlockChainService : IBlockChainService, ISingletonDependency
             throw;
         }
     }
+
+    public async Task<string> SignDropOnBlockChainAsync(List<Order> ordersForDrop)
+    {
+        if (ordersForDrop == null || !ordersForDrop.Any())
+            throw new ArgumentException("No orders provided for drop.");
+        ordersForDrop.OrderBy(q => q.CreatedMoment);
+
+        try
+        {
+            var userAddresses = ordersForDrop
+                .Select(o => ValidateAndConvertToChecksumAddress(o.WalletAddress))
+                .ToArray();
+
+            var orderIds = ordersForDrop
+                .Select(o => o.OrderId)
+                .ToArray();
+
+            var signatures = ordersForDrop
+                .Select(o => o.DropSignature)
+                .ToArray();
+
+            var batchDropFunction = _contract.GetFunction("batchDropOrderBySig");
+
+            var gasPrice = await GetOptimalGasPriceAsync();
+            var gas = new HexBigInteger(_settings.GetDefaultGasLimit());
+
+            var transactionReceipt = await batchDropFunction.SendTransactionAndWaitForReceiptAsync(
+                from: _account.Address,
+                gas: gas,
+                gasPrice: new HexBigInteger(gasPrice),
+                value: new HexBigInteger(0),
+                functionInput: new object[] { userAddresses, orderIds, signatures }
+            );
+
+            if (transactionReceipt.Status.Value == 1)
+            {
+                _logger.LogInformation("Successfully executed batch drop. TxHash: {TxHash}", transactionReceipt.TransactionHash);
+                return transactionReceipt.TransactionHash;
+            }
+            else
+            {
+                _logger.LogError("Batch drop failed (reverted). TxHash: {TxHash}", transactionReceipt.TransactionHash);
+                return null;
+            }
+        }
+        catch (SmartContractRevertException revertEx)
+        {
+            _logger.LogError(revertEx, "Contract logic error during batch drop: {Message}", revertEx.Message);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error during batch drop.");
+            return null;
+        }
+    }
+
+
     #endregion
 
 
