@@ -87,15 +87,43 @@ namespace RZPrime.Services._TransactionLog
 
         public async Task CreateOrderExecutedTransactionLogAsync(ExecutedTxLog log)
         {
-
             try
             {
-
                 var exlog = await _transactionLogRepository.FindOneAsync(q => q.OrderId == log.OrderId);
                 if (exlog != null)
                 {
                     exlog.Histories.Add(log.ExecuteData);
                     await _transactionLogRepository.ReplaceOneAsync(exlog);
+
+                    var now = DateTime.UtcNow;
+                    var txHash = log.ExecuteData.Hash;
+                    var filter = Builders<Order>.Filter.Eq(o => o.OrderId, log.OrderId);
+
+
+                    var newMetaData = new OrderTransactionMeta
+                    {
+                        CreateMoment = now,
+                        Hash = txHash,
+                        Status = TransactionStatus.Confirmed
+                    }; 
+
+                    var update = Builders<Order>.Update
+                        .Set(o => o.State, OrderState.Paid)
+                        .Set(o => o.ChangeStateMoment, now)
+                        .Push(o => o.TransactionsMetaData, newMetaData);
+
+                    var updatedOrder = await _orderRepository.FindOneAndUpdateWithOptionAsync(filter, update);
+                    var order = updatedOrder ?? await GetOrderAsync(log.OrderId);
+
+                    try
+                    {
+                        var shortHash = txHash.Length > 10 ? txHash[..10] : txHash;
+                        await _hubContext.Clients.Group(order.WalletAddress).SendAsync("NotifyPaidOrder", $"Transaction {shortHash}... is completed successfully");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"error in sending hub execute order : {order.Id} -- message =>>> {ex.Message}");
+                    }
                 }
                 else
                 {
@@ -129,45 +157,46 @@ namespace RZPrime.Services._TransactionLog
                 if (exlog != null)
                 {
                     var txHash = log.ConfirmData.Hash;
-                    var isExecuteHhistory = exlog.Histories.Any(q => q.Hash != txHash);
+                    //var isExecuteHhistory = exlog.Histories.Any(q => q.Hash != txHash);
 
                     exlog.Histories.Add(log.ConfirmData);
                     await _transactionLogRepository.ReplaceOneAsync(exlog);
 
-                    if (isExecuteHhistory)
-                    {
-                        var now = DateTime.UtcNow;
+                    //if (isExecuteHhistory)
+                    //{
+                    //    var now = DateTime.UtcNow;
 
-                        var filter = Builders<Order>.Filter.Eq(o => o.OrderId, log.OrderId);
+                    //    var filter = Builders<Order>.Filter.Eq(o => o.OrderId, log.OrderId);
 
 
-                        var newMetaData = new OrderTransactionMeta
-                        {
-                            CreateMoment = now,
-                            Hash = txHash,
-                            Status = TransactionStatus.Confirmed
-                        };
+                    //    var newMetaData = new OrderTransactionMeta
+                    //    {
+                    //        CreateMoment = now,
+                    //        Hash = txHash,
+                    //        Status = TransactionStatus.Confirmed
+                    //    };
 
-                        var update = Builders<Order>.Update
-                            .Set(o => o.State, OrderState.Paid)
-                            .Set(o => o.ChangeStateMoment, now)
-                            .Push(o => o.TransactionsMetaData, newMetaData);
+                    //    var update = Builders<Order>.Update
+                    //        .Set(o => o.State, OrderState.Paid)
+                    //        .Set(o => o.ChangeStateMoment, now)
+                    //        .Push(o => o.TransactionsMetaData, newMetaData);
 
                         
-                        var updatedOrder = await _orderRepository.FindOneAndUpdateWithOptionAsync(filter, update);
-                        var order = updatedOrder ?? await GetOrderAsync(log.OrderId);
+                    //    var updatedOrder = await _orderRepository.FindOneAndUpdateWithOptionAsync(filter, update);
+                    //    var order = updatedOrder ?? await GetOrderAsync(log.OrderId);
 
-                        try
-                        {
-                            var shortHash = txHash.Length > 10 ? txHash[..10] : txHash;
-                            await _hubContext.Clients.Group(order.WalletAddress).SendAsync("NotifyPaidOrder", $"Transaction {shortHash}... is completed successfully");
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError($"error in sending hub confirmed order : {order.Id} -- message =>>> {ex.Message}");
-                        }
+                    //    try
+                    //    {
+                    //        var shortHash = txHash.Length > 10 ? txHash[..10] : txHash;
+                    //        await _hubContext.Clients.Group(order.WalletAddress).SendAsync("NotifyPaidOrder", $"Transaction {shortHash}... is completed successfully");
+                    //    }
+                    //    catch (Exception ex)
+                    //    {
+                    //        _logger.LogError($"error in sending hub confirmed order : {order.Id} -- message =>>> {ex.Message}");
+                    //    }
 
-                    }
+                    //}
+                
                 }
             }
 
