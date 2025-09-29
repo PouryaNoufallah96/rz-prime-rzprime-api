@@ -58,7 +58,7 @@ namespace RZPrime.Services._Price
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error fetching price in RZ for {tokenName.ToUpper()}: {ex.Message}");
+                //Console.WriteLine($"Error fetching price in RZ for {tokenName.ToUpper()}: {ex.Message}");
                 return await FetchTokenPriceFromGeckoTerminalAsync(tokenName);
             }
         }
