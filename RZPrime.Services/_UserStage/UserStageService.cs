@@ -75,7 +75,8 @@ namespace RZPrime.Services._UserStage
         {
             var excludeWallets = new List<string> { "0xf3B97d7A9e0BCCa9912a575564d531cE2B6c0f6B" };
 
-            if (excludeWallets.Contains(walletAddress) && UserStageType == UserStageType.Regular)
+            if (excludeWallets.Any(x => string.Equals(x, walletAddress, StringComparison.OrdinalIgnoreCase))
+                 && UserStageType == UserStageType.Regular)
             {
                 return (1, 1000);
             }
