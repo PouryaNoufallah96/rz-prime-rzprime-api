@@ -1,7 +1,6 @@
 ﻿using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
-using Org.BouncyCastle.Asn1.X509;
 using RZPrime.Domain.Collections;
 using RZPrime.Domain.Repositories;
 using RZPrime.Domain.Repositories.Contracts;
@@ -9,6 +8,8 @@ using RZPrime.Services._TransactionLog.DTOs;
 using RZPrime.Services._TransactionLog.DTOs.Results;
 using RZPrime.Utilities.DTOs;
 using RZPrime.Utilities.Exceptions.Common;
+using System.Numerics;
+using MongoDB.Driver.Linq;
 using static RZPrime.Utilities.Constants.RegisterMode;
 
 namespace RZPrime.Services._TransactionLog
@@ -93,11 +94,18 @@ namespace RZPrime.Services._TransactionLog
                 var exlog = await _transactionLogRepository.FindOneAsync(q => q.OrderId == log.OrderId);
                 if (exlog != null)
                 {
+                    var txHash = log.ExecuteData.Hash;
+
+                    if (exlog.Histories.Select(q => q.Hash).Contains(txHash))
+                    {
+                        _logger.LogInformation($"Duplicated hash : {txHash}");
+                        return;
+                    }
+                      
                     exlog.Histories.Add(log.ExecuteData);
                     await _transactionLogRepository.ReplaceOneAsync(exlog);
 
                     var now = DateTime.UtcNow;
-                    var txHash = log.ExecuteData.Hash;
                     var filter = Builders<Order>.Filter.Eq(o => o.OrderId, log.OrderId);
 
 
@@ -290,6 +298,17 @@ namespace RZPrime.Services._TransactionLog
         public Task<TransactionListResult> ListTransactionsAsync(Pagination pagination, string walletAddress)
         {
             throw new NotImplementedException();
+        }
+
+        public async Task<BigInteger> GetLastCheckedBlockNumberAsync()
+        {
+            var lastBlock = await _transactionLogRepository
+             .AsQueryable()
+             .SelectMany(t => t.Histories.Select(h => h.BlockNumber))
+             .OrderByDescending(b => b)
+             .FirstOrDefaultAsync();
+
+            return new BigInteger(lastBlock);
         }
 
 

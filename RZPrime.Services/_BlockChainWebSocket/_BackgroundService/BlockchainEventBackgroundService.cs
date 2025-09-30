@@ -61,11 +61,14 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             _logger.LogInformation("Blockchain Event Service starting...");
+            _lastProcessedBlock = await _transactionLogService.GetLastCheckedBlockNumberAsync();
+            _logger.LogInformation($"starting block is : {_lastProcessedBlock}");
 
             while (!stoppingToken.IsCancellationRequested)
             {
                 try
                 {
+                    
                     if (!IsConnected())
                     {
                         await TryConnectWithRetryAsync(stoppingToken);
