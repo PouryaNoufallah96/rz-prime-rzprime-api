@@ -10,7 +10,10 @@ namespace RZPrime.Services._User.DTOs.Results
         public decimal SumOfMining { get; set; }
         public int AvailableDropCount { get; set; }
 
+        public decimal MinimumBuyAmount { get; set; }
+        public decimal MaximumBuyAmount { get; set; }
+        public int MaximumPayOfMonth { get; set; } 
     }
 
-
+     
 } 

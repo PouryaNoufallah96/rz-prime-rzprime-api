@@ -583,11 +583,14 @@ namespace RZPrime.Services._Order
             var effectivePrice = await _priceService.CalculateEffectivePriceAsync(tokenName, tokenQuantity, update.USDTAmount);
             var loanAmount = update.USDTAmount;
 
-            //if (loanAmount < stageSetting.MinimumBuyAmount) throw new BadRequestException($"Min of buy amount is {stageSetting.MinimumBuyAmount}");
-            if (loanAmount > stageSetting.MaximumBuyAmount) throw new BadRequestException($"Max of buy amount is {stageSetting.MaximumBuyAmount}");
+            var (minBuy, maxBuy) = _userStageService.GetMinAndMaxBuyAmountWithStage(walletAddress, stage);
+
+
+            if (loanAmount < minBuy) throw new BadRequestException($"Min of buy amount is {minBuy}");
+            if (loanAmount > maxBuy) throw new BadRequestException($"Max of buy amount is {maxBuy}");
 
             var frozenLoanAmount = await GetFrozenUsingLoanAmountAsync(publicKey, walletAddress, stage);
-            var remainForSubmitOrder = stageSetting.MaximumBuyAmount - frozenLoanAmount;
+            var remainForSubmitOrder = maxBuy - frozenLoanAmount;
             if (loanAmount > remainForSubmitOrder)
                 throw new BadRequestException($"Your remain loan amount for submit order is {remainForSubmitOrder} in {stage.ToDisplay()} stage");
             return (tokenQuantity, effectivePrice);

@@ -295,6 +295,11 @@ namespace RZPrime.Services._User
 
             foreach (var stage in stages)
             {
+
+                // for now we have just regular
+                if (stage.Stage != UserStageType.Regular) continue;
+
+
                 var stageSetting = GetStageSetting(stage.Stage);
                 decimal LoanAmount = 0;
 
@@ -302,18 +307,24 @@ namespace RZPrime.Services._User
                 {
                     LoanAmount = value;
                 }
+                var (minBuy, maxBuy) = _userStageService.GetMinAndMaxBuyAmountWithStage(walletAddress, stage.Stage);
 
                 result.Add(new GetUserStatsResult
                 {
                     Stage = stage.Stage,
-                    AvailableLoanAmount = stageSetting.MaximumBuyAmount - LoanAmount,
+                    AvailableLoanAmount = maxBuy - LoanAmount,
                     SumOfMining = 0,
-                    AvailableDropCount = stage.AvailableDrop
+                    AvailableDropCount = stage.AvailableDrop,
+                    MinimumBuyAmount = minBuy,
+                    MaximumBuyAmount = maxBuy,
+                    MaximumPayOfMonth = stageSetting.MaximumPayOffMonth,
                 });
             }
 
             return result;
         }
+
+
 
 
 

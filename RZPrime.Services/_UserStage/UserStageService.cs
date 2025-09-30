@@ -10,6 +10,7 @@ namespace RZPrime.Services._UserStage
 {
     public class UserStageService(
         IUserStageRepository _userStageRepository,
+        UserStageSetting _userStageSetting,
         UserStageSetting userStageSetting,
         IOrderRepository _orderRepository) : IUserStageService, IScopedDependency
     {
@@ -69,6 +70,39 @@ namespace RZPrime.Services._UserStage
 
         }
 
+
+        public (decimal, decimal) GetMinAndMaxBuyAmountWithStage(string walletAddress, UserStageType UserStageType)
+        {
+            var excludeWallets = new List<string> { "0xf3B97d7A9e0BCCa9912a575564d531cE2B6c0f6B" };
+
+            if (excludeWallets.Contains(walletAddress) && UserStageType == UserStageType.Regular)
+            {
+                return (1, 1000);
+            }
+
+            var stageSetting = GetStageSetting(UserStageType);
+            return (stageSetting.MinimumBuyAmount, stageSetting.MaximumBuyAmount);
+
+        }
+
+
+        /// <summary>
+        /// for getting stage setting by stage type enum
+        /// </summary>
+        /// <param name="stage"></param>
+        /// <returns></returns>
+        /// <exception cref="BadRequestException"></exception>
+        private StageSetting GetStageSetting(UserStageType stage)
+        {
+            return stage switch
+            {
+                UserStageType.Regular => _userStageSetting.Regular,
+                UserStageType.Gold => _userStageSetting.Gold,
+                UserStageType.Premium => _userStageSetting.Premium,
+                UserStageType.X => _userStageSetting.X,
+                _ => throw new BadRequestException("wrong stage!"),
+            };
+        }
 
         //TODO : auto calc for stage
 

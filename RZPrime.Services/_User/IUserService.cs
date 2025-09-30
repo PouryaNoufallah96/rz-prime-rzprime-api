@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using RZPrime.Domain.Collections;
 using RZPrime.Services._User.DTOs.Results;
 using RZPrime.Services._User.DTOs.Updates;
 
@@ -16,6 +17,5 @@ namespace RZPrime.Services._User
 
         //stats
         Task<List<GetUserStatsResult>> GetUserStatsAsync(string userPublicKey, string walletAddress);
-
     }
 }
