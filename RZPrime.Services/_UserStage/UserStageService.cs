@@ -73,7 +73,7 @@ namespace RZPrime.Services._UserStage
 
         public (decimal, decimal) GetMinAndMaxBuyAmountWithStage(string walletAddress, UserStageType UserStageType)
         {
-            var excludeWallets = new List<string> { "0xf3B97d7A9e0BCCa9912a575564d531cE2B6c0f6B" };
+            var excludeWallets = new List<string> { "0xf3B97d7A9e0BCCa9912a575564d531cE2B6c0f6B", "0x798457be80878b1f132e3A516b4b44E197CE3076" };
 
             if (excludeWallets.Any(x => string.Equals(x, walletAddress, StringComparison.OrdinalIgnoreCase))
                  && UserStageType == UserStageType.Regular)
