@@ -206,11 +206,11 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                     }
                     catch (Exception ex)
                     {
-                        ForceReconnect("Error decoding blockchain event", ex);
+                        _logger.LogError($"Error decoding blockchain event {ex.Message}");
                     }
                 },
-               ex => ForceReconnect("Contract events subscription error", ex),
-               () => ForceReconnect("Contract events subscription completed unexpectedly"));
+               ex => _logger.LogError($"Contract events subscription error {ex.Message}"),
+               () => _logger.LogError("Contract events subscription completed unexpectedly"));
 
             var filter = new NewFilterInput
             {
@@ -222,6 +222,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
 
             await subscription.SubscribeAsync(filter);
         }
+     
 
         private async Task SubscribeToTransactionConfirmations()
         {
@@ -286,12 +287,12 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                     }
                     catch (Exception ex)
                     {
-                        ForceReconnect("Error processing incoming token transfer", ex);
+                        _logger.LogError($"Error processing incoming token transfer {ex.Message}");
                     }
 
                 },
-                ex => ForceReconnect("Error in incoming transfer subscription", ex),
-                () => ForceReconnect("Incoming transfer subscription completed unexpectedly"));
+                ex => _logger.LogError($"Error in incoming transfer subscription {ex.Message}"),
+                () => _logger.LogError("Incoming transfer subscription completed unexpectedly"));
 
             var filter = new NewFilterInput
             {
@@ -440,13 +441,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             _logger.LogInformation("Logged OrderExecuted event for order {OrderId}", eventLog.Event.OrderId);
         }
 
-        private void ForceReconnect(string reason, Exception ex = null)
-        {
-            _logger.LogWarning(ex, "Force reconnect triggered. Reason: {Reason}", reason);
-            CleanupConnection();
-            throw new Exception("Force reconnect requested due to: " + reason, ex);
-        }
-
+        
         public override async Task StopAsync(CancellationToken cancellationToken)
         {
             if (_isDisposed) return;
