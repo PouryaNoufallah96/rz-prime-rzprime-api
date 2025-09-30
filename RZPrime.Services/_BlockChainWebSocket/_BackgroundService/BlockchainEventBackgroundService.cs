@@ -100,7 +100,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                 await SubscribeToContractEvents(cancellationToken);
 
                 // Subscribe to transaction confirmations
-                await SubscribeToTransactionConfirmations();
+                //await SubscribeToTransactionConfirmations();
 
                 // Subscribe to incoming transfers
                 await SubscribeToIncomingTransfers(cancellationToken);
@@ -174,15 +174,15 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                 {
                     try
                     {
-                        var orderRegistered = log.DecodeEvent<OrderRegisteredEventDTO>();
-                        if (orderRegistered != null)
-                        {
-                            _logger.LogInformation("OrderRegistered: {OrderId} by {User}", orderRegistered.Event.OrderId, orderRegistered.Event.User);
-                            _lastProcessedBlock = log.BlockNumber.Value + 1;
+                        //var orderRegistered = log.DecodeEvent<OrderRegisteredEventDTO>();
+                        //if (orderRegistered != null)
+                        //{
+                        //    _logger.LogInformation("OrderRegistered: {OrderId} by {User}", orderRegistered.Event.OrderId, orderRegistered.Event.User);
+                        //    //_lastProcessedBlock = log.BlockNumber.Value + 1;
 
-                            //await LogOrderRegisteredEvent(orderRegistered, log);
-                            return;
-                        }
+                        //    //await LogOrderRegisteredEvent(orderRegistered, log);
+                        //    return;
+                        //}
 
                         var orderExecuted = log.DecodeEvent<OrderExecutedEventDTO>();
                         if (orderExecuted != null)
