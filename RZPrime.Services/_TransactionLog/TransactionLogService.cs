@@ -45,6 +45,7 @@ namespace RZPrime.Services._TransactionLog
         //    }
 
         //}
+
         public async Task CreateOrderRegisteredTransactionLogAsync(RegisteredTxLog log)
         {
             //_logger.LogInformation($"order register orderId{transactionLog.OrderId} {DateTime.UtcNow}");

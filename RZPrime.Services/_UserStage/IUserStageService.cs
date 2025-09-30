@@ -9,7 +9,7 @@ namespace RZPrime.Services._UserStage
         Task IncreaseDropCountAsync(UserStage stage);
         public (decimal, decimal) GetMinAndMaxBuyAmountWithStage(string walletAddress, UserStageType UserStageType);
 
-
+        Task SyncDropCountsInStagesAsync();
     }
 }
  

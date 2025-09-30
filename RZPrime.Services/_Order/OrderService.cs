@@ -294,7 +294,7 @@ namespace RZPrime.Services._Order
                   .Set(x => x.ModifiedMoment, now);
 
                 var result = await _orderRepository.UpdateManyAsync(filter, update);
-
+                _logger.LogInformation("Orders expire done");
             }
 
         }

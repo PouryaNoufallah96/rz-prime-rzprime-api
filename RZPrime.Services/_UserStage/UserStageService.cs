@@ -1,18 +1,18 @@
-﻿using RZPrime.Domain.Collections;
-using RZPrime.Domain.Repositories.Contracts;
-using MongoDB.Driver.Linq;
-using static RZPrime.Utilities.Constants.RegisterMode;
+﻿using MongoDB.Bson;
 using MongoDB.Driver;
-using RZPrime.Utilities.Exceptions.Common;
+using MongoDB.Driver.Linq;
+using RZPrime.Domain.Collections;
+using RZPrime.Domain.Repositories.Contracts;
 using RZPrime.Services._UserStage.DTOs.Settings;
+using RZPrime.Utilities.Exceptions.Common;
+using static RZPrime.Utilities.Constants.RegisterMode;
 
 namespace RZPrime.Services._UserStage
 {
     public class UserStageService(
         IUserStageRepository _userStageRepository,
         UserStageSetting _userStageSetting,
-        UserStageSetting userStageSetting,
-        IOrderRepository _orderRepository) : IUserStageService, IScopedDependency
+        UserStageSetting userStageSetting) : IUserStageService, IScopedDependency
     {
 
 
@@ -34,6 +34,13 @@ namespace RZPrime.Services._UserStage
             return result;
         }
 
+
+        /// <summary>
+        /// this methods use for increase drop count for user
+        /// </summary>
+        /// <param name="stage"></param>
+        /// <returns></returns>
+        /// <exception cref="BadRequestException"></exception>
         public async Task IncreaseDropCountAsync(UserStage stage)
         {
             if (stage.AvailableDrop <= 0)
@@ -71,9 +78,16 @@ namespace RZPrime.Services._UserStage
         }
 
 
+        /// <summary>
+        /// this methods use for getting min and max of user and check excludes wallets
+        /// </summary>
+        /// <param name="walletAddress"></param>
+        /// <param name="UserStageType"></param>
+        /// <returns></returns>
         public (decimal, decimal) GetMinAndMaxBuyAmountWithStage(string walletAddress, UserStageType UserStageType)
         {
-            var excludeWallets = new List<string> { "0xf3B97d7A9e0BCCa9912a575564d531cE2B6c0f6B", "0x798457be80878b1f132e3A516b4b44E197CE3076" };
+            var excludeWallets = new List<string> { "0xf3B97d7A9e0BCCa9912a575564d531cE2B6c0f6B", "0x798457be80878b1f132e3A516b4b44E197CE3076"
+            ,"0xa756b5f89290cC1C57cB88ee010E8D97EfB118C0"};
 
             if (excludeWallets.Any(x => string.Equals(x, walletAddress, StringComparison.OrdinalIgnoreCase))
                  && UserStageType == UserStageType.Regular)
@@ -84,6 +98,49 @@ namespace RZPrime.Services._UserStage
             var stageSetting = GetStageSetting(UserStageType);
             return (stageSetting.MinimumBuyAmount, stageSetting.MaximumBuyAmount);
 
+        }
+
+
+
+        /// <summary>
+        /// this method use for sync drop counts in stages
+        /// reset drop count after 6 month in the stage
+        /// </summary>
+        /// <returns></returns>
+        public async Task SyncDropCountsInStagesAsync()
+        {
+            var now = DateTime.UtcNow;
+            var cutoff = now.AddMonths(-6);
+
+            foreach (UserStageType stageType in Enum.GetValues(typeof(UserStageType)))
+            {
+
+                //TODO : remove when other stage added
+                if (stageType != UserStageType.Regular) continue;
+
+                var stageSetting = GetStageSetting(stageType);
+
+                var filter = Builders<UserStage>.Filter.And(
+                     Builders<UserStage>.Filter.Eq(x => x.Stage, stageType),
+                     Builders<UserStage>.Filter.Lt(x => x.AvailableDrop, stageSetting.AvailableDropCount),
+                     Builders<UserStage>.Filter.Or(
+                         Builders<UserStage>.Filter.And(
+                             Builders<UserStage>.Filter.Ne(x => x.ModifiedMoment, null),
+                             Builders<UserStage>.Filter.Lte(x => x.ModifiedMoment, cutoff)
+                         ),
+                         Builders<UserStage>.Filter.And(
+                             Builders<UserStage>.Filter.Eq(x => x.ModifiedMoment, null),
+                             Builders<UserStage>.Filter.Lte(x => x.CreatedMoment, cutoff)
+                         )
+                     )
+                 );
+
+                var update = Builders<UserStage>.Update
+                    .Set(x => x.AvailableDrop, stageSetting.AvailableDropCount)
+                    .Set(x => x.ModifiedMoment, now);
+
+                var result = await _userStageRepository.UpdateManyAsync(filter, update);                
+            }
         }
 
 
