@@ -98,16 +98,18 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
 
                 // Subscribe to contract events
                 await SubscribeToContractEvents(cancellationToken);
+                _logger.LogInformation("Contract events subscription active.");
 
                 // Subscribe to transaction confirmations
                 //await SubscribeToTransactionConfirmations();
 
                 // Subscribe to incoming transfers
                 await SubscribeToIncomingTransfers(cancellationToken);
+                _logger.LogInformation("Incoming transfers subscription active.");
+
 
                 _logger.LogInformation("All subscriptions active.");
 
-                // Heartbeat loop to detect disconnectiona
                 while (!cancellationToken.IsCancellationRequested)
                 {
                     try
