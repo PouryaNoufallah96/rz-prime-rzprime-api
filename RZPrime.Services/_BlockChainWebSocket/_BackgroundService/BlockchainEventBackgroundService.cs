@@ -127,16 +127,11 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error connecting/subscribing. Will reconnect in 5s...");
+                throw;
             }
             finally
             {
-                CleanupConnection();
-                await Task.Delay(5000, cancellationToken);
-
-                if (!cancellationToken.IsCancellationRequested)
-                {
-                    await ConnectAndSubscribe(cancellationToken);
-                }
+                CleanupConnection();              
             }
         }
 
@@ -196,11 +191,11 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Error decoding blockchain event");
+                        ForceReconnect("Error decoding blockchain event", ex);
                     }
                 },
-                ex => _logger.LogError(ex, "Contract events subscription error"),
-                () => _logger.LogWarning("Contract events subscription completed"));
+               ex => ForceReconnect("Contract events subscription error", ex),
+               () => ForceReconnect("Contract events subscription completed unexpectedly"));
 
             var filter = new NewFilterInput
             {
@@ -246,6 +241,8 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             await blockSubscription.SubscribeAsync();
         }
 
+
+
         private async Task SubscribeToIncomingTransfers(CancellationToken cancellationToken)
         {
             var tokenAddresses = _availableTokensSettings
@@ -274,11 +271,12 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Error processing incoming token transfer");
+                        ForceReconnect("Error processing incoming token transfer", ex);
                     }
 
-                }, ex => _logger.LogError(ex, "Error in incoming transfer subscription"),
-                () => _logger.LogInformation("Incoming transfer subscription completed"));
+                },
+                ex => ForceReconnect("Error in incoming transfer subscription", ex),
+                () => ForceReconnect("Incoming transfer subscription completed unexpectedly"));
 
             var filter = new NewFilterInput
             {
@@ -287,6 +285,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
 
             await subscription.SubscribeAsync(filter);
         }
+
 
         private async Task ProcessTransactionConfirmed(Transaction transaction)
         {
@@ -426,6 +425,12 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             _logger.LogInformation("Logged OrderExecuted event for order {OrderId}", eventLog.Event.OrderId);
         }
 
+        private void ForceReconnect(string reason, Exception ex = null)
+        {
+            _logger.LogWarning(ex, "Force reconnect triggered. Reason: {Reason}", reason);
+            CleanupConnection();
+            throw new Exception("Force reconnect requested due to: " + reason, ex);
+        }
 
         public override async Task StopAsync(CancellationToken cancellationToken)
         {
