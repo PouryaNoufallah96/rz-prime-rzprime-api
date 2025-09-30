@@ -60,36 +60,48 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
         {
             _logger.LogInformation("Blockchain Event Service starting...");
 
+            int reconnectAttempts = 0;
+
             while (!stoppingToken.IsCancellationRequested)
             {
                 try
                 {
                     await ConnectAndSubscribe(stoppingToken);
+
+                    reconnectAttempts = 0;
                 }
                 catch (OperationCanceledException)
                 {
-                    _logger.LogInformation("Blockchnain Service is stopping...");
+                    _logger.LogInformation("Blockchain Service is stopping...");
                     break;
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error in blockchain main loop. Reconnecting in 5 seconds...");
-                    CleanupConnection();
-                    await Task.Delay(5000, stoppingToken);
-                }
+                    reconnectAttempts++;
+                    int delaySeconds = Math.Min(30, 5 * reconnectAttempts); 
 
-                if (!stoppingToken.IsCancellationRequested)
-                {
-                    _logger.LogWarning("Subscription ended unexpectedly. Reconnecting in 5 seconds...");
+                    _logger.LogError(ex, "Error in blockchain main loop. Reconnecting in {Delay}s...", delaySeconds);
+
                     CleanupConnection();
-                    await Task.Delay(5000, stoppingToken);
+
+                    try
+                    {
+                        await Task.Delay(delaySeconds * 1000, stoppingToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
                 }
             }
-        }
 
+            _logger.LogInformation("Blockchain Event Service stopped.");
+        }
 
         private async Task ConnectAndSubscribe(CancellationToken cancellationToken)
         {
+            _logger.LogInformation("...........ConnectAndSubscribe touched............");
+
             _webSocketClient = new StreamingWebSocketClient(_settings.WsUrl);
 
             try

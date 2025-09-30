@@ -269,36 +269,6 @@ namespace RZPrime.Services._Order
         }
 
 
-        /// <summary>
-        /// thid method find expire method and make it drop
-        /// </summary>
-        /// <returns></returns>
-        public async Task FindOrderToMakeDropAsync()
-        {
-            var now = DateTime.UtcNow;
-            var orders = await _orderRepository.AsQueryable()
-                .Where(q => q.State == OrderState.Registered)
-                .Where(q => q.PayOffDate >= now)
-                .OrderBy(q => q.CreatedMoment)
-                .ToListAsync();
-
-            if (orders != null && orders.Count > 0)
-            {
-                var filter = Builders<Order>.Filter.And(
-            Builders<Order>.Filter.Eq(x => x.State, OrderState.Registered),
-            Builders<Order>.Filter.Lte(x => x.PayOffDate, now));
-
-                var update = Builders<Order>.Update
-                  .Set(x => x.State, OrderState.Drop)
-                  .Set(x => x.ChangeStateMoment, now)
-                  .Set(x => x.ModifiedMoment, now);
-
-                var result = await _orderRepository.UpdateManyAsync(filter, update);
-                _logger.LogInformation("Orders expire done");
-            }
-
-        }
-
 
         /// <summary>
         /// for sync lost orders , when web socket did not sync order data , should use this method manually on order
@@ -368,6 +338,46 @@ namespace RZPrime.Services._Order
         }
 
 
+        /// <summary>
+        /// thid method find expire method and make it drop
+        /// </summary>
+        /// <returns></returns>
+        public async Task FindOrderToMakeDropAsync()
+        {
+            var now = DateTime.UtcNow;
+            var orders = await _orderRepository.AsQueryable()
+                .Where(q => q.State == OrderState.Registered)
+                .Where(q => q.PayOffDate >= now)
+                .OrderBy(q => q.CreatedMoment)
+                .ToListAsync();
+
+            if (orders != null && orders.Count > 0)
+            {
+                var filter = Builders<Order>.Filter.And(
+            Builders<Order>.Filter.Eq(x => x.State, OrderState.Registered),
+            Builders<Order>.Filter.Lte(x => x.PayOffDate, now));
+
+                var update = Builders<Order>.Update
+                  .Set(x => x.State, OrderState.Drop)
+                  .Set(x => x.ChangeStateMoment, now)
+                  .Set(x => x.ModifiedMoment, now);
+
+                var result = await _orderRepository.UpdateManyAsync(filter, update);
+
+                if (result != null && result.ModifiedCount > 0)
+                {
+                    _logger.LogInformation("{Count} orders expired and moved to Drop state.", result.ModifiedCount);
+                }
+
+            }
+
+        }
+
+
+        /// <summary>
+        /// this method use for send drop request to blockchain
+        /// </summary>
+        /// <returns></returns>
         public async Task SignDropsAsync()
         {
             var dropsForSign = await _orderRepository.AsQueryable()
@@ -385,9 +395,11 @@ namespace RZPrime.Services._Order
                     var update = Builders<Order>.Update.Set(o => o.DropTransactionHash, txHash);
 
                     var result = await _orderRepository.UpdateManyAsync(filter, update);
-
-                    _logger.LogInformation("Updated {MatchedCount} orders with DropTransactionHash {TxHash}",
-                        result.MatchedCount, txHash);
+                    if (result != null && result.ModifiedCount > 0)
+                    {
+                        _logger.LogInformation("Updated {ModifiedCount} orders with DropTransactionHash {TxHash}.",
+                            result.ModifiedCount, txHash);
+                    }                                      
                 }
             }
         }
