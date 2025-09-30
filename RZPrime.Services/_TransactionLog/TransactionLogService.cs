@@ -304,7 +304,9 @@ namespace RZPrime.Services._TransactionLog
         {
             var lastBlock = await _transactionLogRepository
              .AsQueryable()
-             .SelectMany(t => t.Histories.Select(h => h.BlockNumber))
+             .SelectMany(t => t.Histories
+                 .Where(h => h.EventType == BlockchainEventType.OrderExecuted)
+                 .Select(h => h.BlockNumber))
              .OrderByDescending(b => b)
              .FirstOrDefaultAsync();
 
