@@ -14,6 +14,7 @@ using RZPrime.Services._Inventory;
 using RZPrime.Services._Price.DTOs.Settings;
 using RZPrime.Services._TransactionLog;
 using RZPrime.Services._TransactionLog.DTOs;
+using System.Net.WebSockets;
 using System.Numerics;
 using System.Reactive.Linq;
 using static RZPrime.Utilities.Constants.RegisterMode;
@@ -32,6 +33,8 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
         private StreamingWebSocketClient _webSocketClient;
         private readonly Contract _contract;
         private bool _isDisposed = false;
+        private int _reconnectAttempts = 0;
+        private DateTime _lastConnectionTime = DateTime.MinValue;
         private IDisposable _transactionSubscription;
         private IDisposable _contractEventsSubscription;
         private IDisposable _incomingTransferSubscription;
@@ -55,49 +58,101 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
         }
 
 
-
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             _logger.LogInformation("Blockchain Event Service starting...");
-
-            int reconnectAttempts = 0;
 
             while (!stoppingToken.IsCancellationRequested)
             {
                 try
                 {
-                    await ConnectAndSubscribe(stoppingToken);
+                    if (!IsConnected())
+                    {
+                        await TryConnectWithRetryAsync(stoppingToken);
+                    }
 
-                    reconnectAttempts = 0;
+                    // Heartbeat loop
+                    while (!stoppingToken.IsCancellationRequested && IsConnected())
+                    {
+                        try
+                        {
+                            var blockNumber = await _web3.Eth.Blocks.GetBlockNumber.SendRequestAsync();
+                            _logger.LogDebug("Heartbeat block: {BlockNumber}", blockNumber.Value);
+                        }
+                        catch
+                        {
+                            _logger.LogWarning("Heartbeat failed. Will reconnect...");
+                            CleanupConnection();
+                            break;
+                        }
+
+                        await Task.Delay(5000, stoppingToken);
+                    }
                 }
                 catch (OperationCanceledException)
                 {
-                    _logger.LogInformation("Blockchain Service is stopping...");
+                    _logger.LogInformation("Service shutdown requested");
                     break;
                 }
                 catch (Exception ex)
                 {
-                    reconnectAttempts++;
-                    int delaySeconds = Math.Min(30, 5 * reconnectAttempts); 
-
-                    _logger.LogError(ex, "Error in blockchain main loop. Reconnecting in {Delay}s...", delaySeconds);
-
+                    _logger.LogError(ex, "Unexpected error in blockchain event service");
                     CleanupConnection();
-
-                    try
-                    {
-                        await Task.Delay(delaySeconds * 1000, stoppingToken);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        break;
-                    }
+                    await Task.Delay(5000, stoppingToken);
                 }
             }
 
             _logger.LogInformation("Blockchain Event Service stopped.");
         }
 
+        private bool IsConnected()
+        {
+            return _webSocketClient != null &&
+                   _webSocketClient.IsStarted &&
+                   _contractEventsSubscription != null;
+        }
+
+        private async Task TryConnectWithRetryAsync(CancellationToken stoppingToken)
+        {
+            _reconnectAttempts = 0;
+
+            while (!stoppingToken.IsCancellationRequested &&
+                   _reconnectAttempts < _settings.MaxReconnectAttempts)
+            {
+                try
+                {
+                    _logger.LogInformation($"Attempting to connect (Attempt {_reconnectAttempts + 1}/{_settings.MaxReconnectAttempts})");
+                    await ConnectAndSubscribe(stoppingToken); 
+
+                    _lastConnectionTime = DateTime.UtcNow;
+                    _reconnectAttempts = 0;
+                    return;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _reconnectAttempts++;
+                    _logger.LogWarning(ex, "Connection attempt failed. Will retry...");
+                    await Task.Delay(CalculateReconnectDelay(), stoppingToken);
+                }
+            }
+
+            if (_reconnectAttempts >= _settings.MaxReconnectAttempts)
+            {
+                _logger.LogCritical("Max reconnection attempts reached. Waiting before next try...");
+                await Task.Delay(30000, stoppingToken); 
+            }
+        }
+
+       
+        private TimeSpan CalculateReconnectDelay()
+        {
+            double delaySeconds = Math.Min(
+                Math.Pow(2, _reconnectAttempts) * _settings.ReconnectInterval,
+                300);
+            return TimeSpan.FromSeconds(delaySeconds);
+        }
+
+       
         private async Task ConnectAndSubscribe(CancellationToken cancellationToken)
         {
             _logger.LogInformation("...........ConnectAndSubscribe touched............");
@@ -113,44 +168,19 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                 await SubscribeToContractEvents(cancellationToken);
                 _logger.LogInformation("Contract events subscription active.");
 
-                // Subscribe to transaction confirmations
-                //await SubscribeToTransactionConfirmations();
-
                 // Subscribe to incoming transfers
                 await SubscribeToIncomingTransfers(cancellationToken);
                 _logger.LogInformation("Incoming transfers subscription active.");
 
-
                 _logger.LogInformation("All subscriptions active.");
-
-                while (!cancellationToken.IsCancellationRequested)
-                {
-                    try
-                    {
-                        var blockNumber = await _web3.Eth.Blocks.GetBlockNumber.SendRequestAsync();
-                        _logger.LogDebug("Heartbeat block: {BlockNumber}", blockNumber.Value);
-                    }
-                    catch (Exception)
-                    {
-                        _logger.LogWarning("Heartbeat failed. Reconnecting...");
-                        break;
-                    }
-
-                    await Task.Delay(30000, cancellationToken);
-                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error connecting/subscribing. Will reconnect in 5s...");
+                _logger.LogError(ex, "Error connecting/subscribing. Will reconnect...");
                 throw;
-            }
-            finally
-            {
-                CleanupConnection();              
             }
         }
 
-       
         private void CleanupConnection()
         {
             try
@@ -180,37 +210,46 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
 
             _contractEventsSubscription = subscription.GetSubscriptionDataResponsesAsObservable()
                 .Where(log => log.Address.IsTheSameAddress(_settings.ContractAddress))
-                .Subscribe(async log =>
-                {
-                    try
+                .Subscribe(
+                    async log =>
                     {
-                        var orderRegistered = log.DecodeEvent<OrderRegisteredEventDTO>();
-                        if (orderRegistered != null)
+                        try
                         {
-                            _logger.LogInformation("OrderRegistered: {OrderId} by {User}", orderRegistered.Event.OrderId, orderRegistered.Event.User);
-                            //_lastProcessedBlock = log.BlockNumber.Value + 1;
+                            var orderRegistered = log.DecodeEvent<OrderRegisteredEventDTO>();
+                            if (orderRegistered != null)
+                            {
+                                _logger.LogInformation("OrderRegistered: {OrderId} by {User}", orderRegistered.Event.OrderId, orderRegistered.Event.User);
+                                return;
+                            }
 
-                            //await LogOrderRegisteredEvent(orderRegistered, log);
-                            return;
+                            var orderExecuted = log.DecodeEvent<OrderExecutedEventDTO>();
+                            if (orderExecuted != null)
+                            {
+                                _logger.LogInformation("OrderExecuted: {OrderId} by {User}", orderExecuted.Event.OrderId, orderExecuted.Event.User);
+                                _lastProcessedBlock = log.BlockNumber.Value + 1;
+
+                                await LogOrderExecutedEvent(orderExecuted, log);
+                                return;
+                            }
                         }
-
-                        var orderExecuted = log.DecodeEvent<OrderExecutedEventDTO>();
-                        if (orderExecuted != null)
+                        catch (Exception ex)
                         {
-                            _logger.LogInformation("OrderExecuted: {OrderId} by {User}", orderExecuted.Event.OrderId, orderExecuted.Event.User);
-                            _lastProcessedBlock = log.BlockNumber.Value + 1;
-
-                            await LogOrderExecutedEvent(orderExecuted, log);
-                            return;
+                            _logger.LogError($"Error decoding blockchain event {ex.Message}");
                         }
-                    }
-                    catch (Exception ex)
+                    },
+                    async ex =>
                     {
-                        _logger.LogError($"Error decoding blockchain event {ex.Message}");
+                        _logger.LogError($"Contract events subscription error {ex.Message}. Reconnecting...");
+                        CleanupConnection();
+                        await TryConnectWithRetryAsync(cancellationToken);
+                    },
+                    () =>
+                    {
+                        _logger.LogWarning("Contract events subscription completed unexpectedly. Reconnecting...");
+                        CleanupConnection();
+                        TryConnectWithRetryAsync(cancellationToken).Wait();
                     }
-                },
-               ex => _logger.LogError($"Contract events subscription error {ex.Message}"),
-               () => _logger.LogError("Contract events subscription completed unexpectedly"));
+                );
 
             var filter = new NewFilterInput
             {
@@ -222,7 +261,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
 
             await subscription.SubscribeAsync(filter);
         }
-     
+
 
         private async Task SubscribeToTransactionConfirmations()
         {
@@ -268,31 +307,42 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             var subscription = new EthLogsObservableSubscription(_webSocketClient);
 
             _incomingTransferSubscription = subscription.GetSubscriptionDataResponsesAsObservable()
-                .Subscribe(async log =>
-                {
-                    try
+                .Subscribe(
+                    async log =>
                     {
-                        if (tokenAddresses.Contains(log.Address.ToLower()))
+                        try
                         {
-                            var transferEvent = log.DecodeEvent<TransferEventDTO>();
-                            if (transferEvent != null && transferEvent.Event.To.IsTheSameAddress(_settings.ContractAddress))
+                            if (tokenAddresses.Contains(log.Address.ToLower()))
                             {
-                                var token = _availableTokensSettings.FirstOrDefault(t => t.Address.IsTheSameAddress(log.Address));
-                                var amount = Web3.Convert.FromWei(transferEvent.Event.Value);
-                                _logger.LogInformation("Incoming {Token} Transfer: {Amount} from {From}", token.Name, amount, transferEvent.Event.From);
+                                var transferEvent = log.DecodeEvent<TransferEventDTO>();
+                                if (transferEvent != null && transferEvent.Event.To.IsTheSameAddress(_settings.ContractAddress))
+                                {
+                                    var token = _availableTokensSettings.FirstOrDefault(t => t.Address.IsTheSameAddress(log.Address));
+                                    var amount = Web3.Convert.FromWei(transferEvent.Event.Value);
+                                    _logger.LogInformation("Incoming {Token} Transfer: {Amount} from {From}", token.Name, amount, transferEvent.Event.From);
 
-                                await _inventoryService.SyncInventoryQuantityAsync(token.Name.ToUpper());
+                                    await _inventoryService.SyncInventoryQuantityAsync(token.Name.ToUpper());
+                                }
                             }
                         }
-                    }
-                    catch (Exception ex)
+                        catch (Exception ex)
+                        {
+                            _logger.LogError($"Error processing incoming token transfer {ex.Message}");
+                        }
+                    },
+                    async ex =>
                     {
-                        _logger.LogError($"Error processing incoming token transfer {ex.Message}");
+                        _logger.LogError($"Error in incoming transfer subscription {ex.Message}. Reconnecting...");
+                        CleanupConnection();
+                        await TryConnectWithRetryAsync(cancellationToken);
+                    },
+                    () =>
+                    {
+                        _logger.LogWarning("Incoming transfer subscription completed unexpectedly. Reconnecting...");
+                        CleanupConnection();
+                        TryConnectWithRetryAsync(cancellationToken).Wait();
                     }
-
-                },
-                ex => _logger.LogError($"Error in incoming transfer subscription {ex.Message}"),
-                () => _logger.LogError("Incoming transfer subscription completed unexpectedly"));
+                );
 
             var filter = new NewFilterInput
             {
@@ -459,6 +509,72 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             }
         }
 
+        //private async Task HandleDisconnection(CancellationToken stoppingToken)
+        //{
+        //    if (stoppingToken.IsCancellationRequested) return;
+
+        //    CleanupConnection();
+
+        //    if (_reconnectAttempts < _settings.MaxReconnectAttempts)
+        //    {
+        //        await HandleConnectionFailure(stoppingToken);
+        //    }
+        //}
+        //private async Task HandleConnectionFailure(CancellationToken stoppingToken)
+        //{
+        //    if (_reconnectAttempts >= _settings.MaxReconnectAttempts)
+        //    {
+        //        _logger.LogCritical("Max reconnection attempts reached. Service will stop.");
+        //        return;
+        //    }
+
+        //    var delay = CalculateReconnectDelay();
+        //    _logger.LogWarning($"Connection failed. Will retry in {delay.TotalSeconds} seconds...");
+        //    await Task.Delay(delay, stoppingToken);
+        //}
+
+
+        //protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        //{
+        //    _logger.LogInformation("Blockchain Event Service starting...");
+
+        //    int reconnectAttempts = 0;
+
+        //    while (!stoppingToken.IsCancellationRequested)
+        //    {
+        //        try
+        //        {
+        //            await ConnectAndSubscribe(stoppingToken);
+
+        //            reconnectAttempts = 0;
+        //        }
+        //        catch (OperationCanceledException)
+        //        {
+        //            _logger.LogInformation("Blockchain Service is stopping...");
+        //            break;
+        //        }
+        //        catch (Exception ex)
+        //        {
+        //            reconnectAttempts++;
+        //            int delaySeconds = Math.Min(30, 5 * reconnectAttempts); 
+
+        //            _logger.LogError(ex, "Error in blockchain main loop. Reconnecting in {Delay}s...", delaySeconds);
+
+        //            CleanupConnection();
+
+        //            try
+        //            {
+        //                await Task.Delay(delaySeconds * 1000, stoppingToken);
+        //            }
+        //            catch (OperationCanceledException)
+        //            {
+        //                break;
+        //            }
+        //        }
+        //    }
+
+        //    _logger.LogInformation("Blockchain Event Service stopped.");
+        //}
 
     }
 }
