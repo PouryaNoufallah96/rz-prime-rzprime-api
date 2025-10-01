@@ -39,9 +39,12 @@ namespace RZPrime.Services._User.DTOs.Storages
         {
             if (TryGetValue(nonce, out var data))
             {
-                data.IsVerified = true;       
-                data.DeviceId = deviceId;     
-                data.WalletAddress = walletAddress;     
+                lock (data) 
+                {
+                    data.IsVerified = true;
+                    data.DeviceId = deviceId;
+                    data.WalletAddress = walletAddress;
+                }
                 return true;
             }
             return false;
