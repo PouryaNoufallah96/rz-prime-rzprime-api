@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Http;
+using RZPrime.Utilities.Services;
 using RZPrime.Utilities.Services.Contracts;
 
 namespace RZPrime.Utilities.Middlewares
@@ -11,8 +12,17 @@ namespace RZPrime.Utilities.Middlewares
 
             if (!string.IsNullOrEmpty(token))
             {
-                var jwtToken = jwtService.Validate(token);
-                context.Items["Token"] = jwtToken;
+                try
+                {
+                    var jwtToken = jwtService.Validate(token);
+                    context.Items["Token"] = jwtToken;
+                }
+                catch 
+                {
+                    throw new UnauthorizedAccessException("Please Login again !");
+                }
+                //var jwtToken = jwtService.Validate(token);
+                //context.Items["Token"] = jwtToken;
             }
 
             await next(context);
