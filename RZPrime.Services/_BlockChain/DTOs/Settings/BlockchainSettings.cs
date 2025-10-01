@@ -6,6 +6,7 @@ namespace RZPrime.Services._BlockChain.DTOs.Settings
     public class BlockChainSettings
     {
         public string RpcUrl { get; set; }
+        public string RpcUrl2 { get; set; }
         public string ContractAddress { get; set; }
         public string PrivateKey { get; set; }
         public string PublicAddress { get; set; }

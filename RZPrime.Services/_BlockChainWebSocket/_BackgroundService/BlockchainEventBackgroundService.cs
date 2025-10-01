@@ -39,6 +39,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
         private IDisposable _contractEventsSubscription;
         private IDisposable _incomingTransferSubscription;
         private BigInteger _lastProcessedBlock = 0;
+        private bool _useSecondaryWsUrl = false;
         public BlockchainEventBackgroundService(
             ILogger<BlockchainEventBackgroundService> logger,
             BlockchainWebSocketSetting settings,
@@ -143,11 +144,12 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             if (_reconnectAttempts >= _settings.MaxReconnectAttempts)
             {
                 _logger.LogCritical("Max reconnection attempts reached. Waiting before next try...");
-                await Task.Delay(30000, stoppingToken); 
+                await Task.Delay(30000, stoppingToken);
+                _reconnectAttempts = 0;
             }
         }
 
-       
+        
         private TimeSpan CalculateReconnectDelay()
         {
             double delaySeconds = Math.Min(
@@ -156,14 +158,14 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             return TimeSpan.FromSeconds(delaySeconds);
         }
 
-       
         private async Task ConnectAndSubscribe(CancellationToken cancellationToken)
         {
             _logger.LogInformation("...........ConnectAndSubscribe touched............");
              
             CleanupConnection();
 
-            _webSocketClient = new StreamingWebSocketClient(_settings.WsUrl);
+            _webSocketClient = new StreamingWebSocketClient(GetCurrentWsUrl());
+            //_webSocketClient = new StreamingWebSocketClient(_settings.WsUrl);
             _web3 = new Web3(_settings.WsUrl);
 
             try
@@ -188,6 +190,14 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             }
         }
 
+        private string GetCurrentWsUrl()
+        {
+            var wss = _useSecondaryWsUrl ? _settings.WsUrl2 : _settings.WsUrl;
+            _useSecondaryWsUrl = !_useSecondaryWsUrl;
+            _logger.LogInformation("WebSocket URL : {Url}", wss);
+            return wss;
+        }
+       
         private void CleanupConnection()
         {
             try
@@ -209,7 +219,6 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                 _logger.LogError(ex, "Error during cleanup.");
             }
         }
-
 
         private async Task SubscribeToContractEvents(CancellationToken cancellationToken)
         {
