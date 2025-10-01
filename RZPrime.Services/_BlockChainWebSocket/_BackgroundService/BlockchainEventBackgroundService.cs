@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Nethereum.ABI.CompilationMetadata;
 using Nethereum.Contracts;
 using Nethereum.Hex.HexTypes;
 using Nethereum.JsonRpc.WebSocketStreamingClient;
@@ -31,15 +32,13 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
         private readonly ITransactionLogService _transactionLogService;
         private Web3 _web3;
         private StreamingWebSocketClient _webSocketClient;
-        private readonly Contract _contract;
+        //private Contract _contract;
         private bool _isDisposed = false;
         private int _reconnectAttempts = 0;
-        private DateTime _lastConnectionTime = DateTime.MinValue;
-        private IDisposable _transactionSubscription;
+        //private IDisposable _transactionSubscription;
         private IDisposable _contractEventsSubscription;
         private IDisposable _incomingTransferSubscription;
         private BigInteger _lastProcessedBlock = 0;
-        //private CancellationTokenSource _ctsReconnect = new();
         public BlockchainEventBackgroundService(
             ILogger<BlockchainEventBackgroundService> logger,
             BlockchainWebSocketSetting settings,
@@ -54,7 +53,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             _transactionLogService = transactionLogService;
 
             _web3 = new Web3(settings.WsUrl);
-            _contract = _web3.Eth.GetContract(ContractAbi, _settings.ContractAddress);
+            //_contract = _web3.Eth.GetContract(ContractAbi, _settings.ContractAddress);
         }
 
 
@@ -72,6 +71,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                     if (!IsConnected())
                     {
                         await TryConnectWithRetryAsync(stoppingToken);
+                        _logger.LogInformation("Successfully connected and subscribed to blockchain events");
                     }
 
                     // Heartbeat loop
@@ -85,11 +85,12 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                         catch
                         {
                             _logger.LogWarning("Heartbeat failed. Will reconnect...");
-                            CleanupConnection();
+                            await TryConnectWithRetryAsync(stoppingToken);
+                            _logger.LogInformation("Successfully connected and subscribed to blockchain events");
                             break;
                         }
 
-                        await Task.Delay(5000, stoppingToken);
+                        await Task.Delay(30000, stoppingToken);
                     }
                 }
                 catch (OperationCanceledException)
@@ -100,7 +101,6 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Unexpected error in blockchain event service");
-                    CleanupConnection();
                     await Task.Delay(5000, stoppingToken);
                 }
             }
@@ -112,7 +112,9 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
         {
             return _webSocketClient != null &&
                    _webSocketClient.IsStarted &&
-                   _contractEventsSubscription != null;
+                   _contractEventsSubscription != null &&
+                   //_transactionSubscription != null &&
+                   _incomingTransferSubscription != null;
         }
 
         private async Task TryConnectWithRetryAsync(CancellationToken stoppingToken)
@@ -127,7 +129,6 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                     _logger.LogInformation($"Attempting to connect (Attempt {_reconnectAttempts + 1}/{_settings.MaxReconnectAttempts})");
                     await ConnectAndSubscribe(stoppingToken); 
 
-                    _lastConnectionTime = DateTime.UtcNow;
                     _reconnectAttempts = 0;
                     return;
                 }
@@ -159,8 +160,11 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
         private async Task ConnectAndSubscribe(CancellationToken cancellationToken)
         {
             _logger.LogInformation("...........ConnectAndSubscribe touched............");
+             
+            CleanupConnection();
 
             _webSocketClient = new StreamingWebSocketClient(_settings.WsUrl);
+            _web3 = new Web3(_settings.WsUrl);
 
             try
             {
@@ -189,12 +193,12 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             try
             {
                 _contractEventsSubscription?.Dispose();
-                _transactionSubscription?.Dispose();
+                //_transactionSubscription?.Dispose();
                 _incomingTransferSubscription?.Dispose();
                 _webSocketClient?.Dispose();
 
                 _contractEventsSubscription = null;
-                _transactionSubscription = null;
+                //_transactionSubscription = null;
                 _incomingTransferSubscription = null;
                 _webSocketClient = null;
 
@@ -243,14 +247,12 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                     async ex =>
                     {
                         _logger.LogError($"Contract events subscription error {ex.Message}. Reconnecting...");
-                        CleanupConnection();
                         await TryConnectWithRetryAsync(cancellationToken);
                     },
                     () =>
                     {
                         _logger.LogWarning("Contract events subscription completed unexpectedly. Reconnecting...");
-                        CleanupConnection();
-                        TryConnectWithRetryAsync(cancellationToken).Wait();
+                        _ = Task.Run(async () => await TryConnectWithRetryAsync(cancellationToken));
                     }
                 );
 
@@ -264,42 +266,6 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
 
             await subscription.SubscribeAsync(filter);
         }
-
-
-        private async Task SubscribeToTransactionConfirmations()
-        {
-            var blockSubscription = new EthNewBlockHeadersObservableSubscription(_webSocketClient);
-
-            _transactionSubscription = blockSubscription.GetSubscriptionDataResponsesAsObservable()
-                .Select(blockHeader =>
-                {
-                    return Observable.FromAsync(() =>
-                        _web3.Eth.Blocks.GetBlockWithTransactionsByNumber.SendRequestAsync(new BlockParameter(blockHeader.Number))
-                    );
-                })
-                .Switch()
-                .Where(block => block?.Transactions != null)
-                .SelectMany(block => block.Transactions
-                    .Where(tx => tx.To != null && tx.To.IsTheSameAddress(_settings.ContractAddress))
-                )
-                .Subscribe(async transaction =>
-                {
-                    try
-                    {
-                        await ProcessTransactionConfirmed(transaction);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error processing transaction confirmation for {TxHash}", transaction.TransactionHash);
-                    }
-                },
-                ex => _logger.LogError(ex, "Error in transaction subscription"),
-                () => _logger.LogInformation("Transaction subscription completed"));
-
-            await blockSubscription.SubscribeAsync();
-        }
-
-
 
         private async Task SubscribeToIncomingTransfers(CancellationToken cancellationToken)
         {
@@ -336,14 +302,12 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                     async ex =>
                     {
                         _logger.LogError($"Error in incoming transfer subscription {ex.Message}. Reconnecting...");
-                        CleanupConnection();
                         await TryConnectWithRetryAsync(cancellationToken);
                     },
                     () =>
                     {
                         _logger.LogWarning("Incoming transfer subscription completed unexpectedly. Reconnecting...");
-                        CleanupConnection();
-                        TryConnectWithRetryAsync(cancellationToken).Wait();
+                        _ = Task.Run(async () => await TryConnectWithRetryAsync(cancellationToken));
                     }
                 );
 
@@ -355,124 +319,6 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             await subscription.SubscribeAsync(filter);
         }
 
-
-        private async Task ProcessTransactionConfirmed(Transaction transaction)
-        {
-            _logger.LogInformation(
-                "Processing confirmed transaction: {TxHash} in block #{BlockNumber}...",
-                transaction.TransactionHash,
-                transaction.BlockNumber.Value);
-
-            try
-            {
-                var receipt = await _web3.Eth.Transactions.GetTransactionReceipt.SendRequestAsync(transaction.TransactionHash);
-
-                if (receipt == null)
-                {
-                    _logger.LogWarning(
-                        "Could not retrieve transaction receipt for {TxHash}.",
-                        transaction.TransactionHash);
-                    return;
-                }
-
-                if (receipt.Status.Value == 0)
-                {
-                    _logger.LogWarning(
-                        "Transaction {TxHash} failed (reverted on-chain). Skipping.",
-                        transaction.TransactionHash);
-
-                    string failedOrderId = ExtractOrderIdFromReceipt(receipt);
-                    var failLog = new FailTxLog
-                    {
-                        OrderId = failedOrderId ?? "failed" + Guid.NewGuid().ToString("N"),
-                        FailData =
-                       new()
-                       {
-                           From = transaction.From,
-                           To = transaction.To,
-                           Hash = transaction.TransactionHash,
-                           BlockNumber = (long)receipt.BlockNumber.Value,
-                           Status = TransactionStatus.Failed,
-                           EventType = BlockchainEventType.TransactionFailed
-                       }
-
-                    };
-                    await _transactionLogService.CreateOrderFailedTransactionLogAsync(failLog);
-                    return;
-                }
-
-                _logger.LogInformation("Attempting to extract OrderId from receipt for {TxHash}...", transaction.TransactionHash);
-                string orderId = ExtractOrderIdFromReceipt(receipt);
-
-                if (!string.IsNullOrEmpty(orderId))
-                {
-                    _logger.LogInformation(
-                        "Successfully extracted OrderId '{OrderId}' from transaction {TxHash}.",
-                        orderId,
-                        transaction.TransactionHash);
-                   
-
-                    var log = new ConfirmTxLog
-                    {
-                        OrderId = orderId,
-                        ConfirmData =
-                        new()
-                        {
-                            From = transaction.From,
-                            To = transaction.To,
-                            Hash = transaction.TransactionHash,
-                            BlockNumber = (long)receipt.BlockNumber.Value,
-                            Status = TransactionStatus.Confirmed,
-                            EventType = BlockchainEventType.TransactionConfirmed
-                        }
-
-                    };
-                    await _transactionLogService.CreateOrderConfirmedTransactionLogAsync(log);
-
-                }
-                else
-                {
-                    _logger.LogInformation(
-                        "No relevant OrderId found in transaction {TxHash}. This may be an unrelated transaction.",
-                        transaction.TransactionHash);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "An unexpected error occurred while processing transaction {TxHash}.", transaction.TransactionHash);
-            }
-        }
-
-        private string ExtractOrderIdFromReceipt(TransactionReceipt receipt)
-        {
-            try
-            {
-                if (receipt?.Logs == null || !receipt.Logs.Any())
-                {
-                    return null;
-                }
-
-                var orderExecutedEvents = receipt.DecodeAllEvents<OrderExecutedEventDTO>();
-                if (orderExecutedEvents.Any())
-                {
-                    return orderExecutedEvents.First().Event.OrderId;
-                }
-
-                var orderRegisteredEvents = receipt.DecodeAllEvents<OrderRegisteredEventDTO>();
-                if (orderRegisteredEvents.Any())
-                {
-                    return orderRegisteredEvents.First().Event.OrderId;
-                }
-
-                return null;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error occurred while trying to extract OrderId from transaction receipt with hash: {TxHash}", receipt?.TransactionHash);
-                return null;
-            }
-        }
-     
         private async Task LogOrderExecutedEvent(EventLog<OrderExecutedEventDTO> eventLog, FilterLog log)
         {
             var transactionLog = new ExecutedTxLog
@@ -494,7 +340,6 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             _logger.LogInformation("Logged OrderExecuted event for order {OrderId}", eventLog.Event.OrderId);
         }
 
-        
         public override async Task StopAsync(CancellationToken cancellationToken)
         {
             if (_isDisposed) return;
@@ -511,6 +356,125 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                 await base.StopAsync(cancellationToken);
             }
         }
+
+        //private async Task ProcessTransactionConfirmed(Transaction transaction)
+        //{
+        //    _logger.LogInformation(
+        //        "Processing confirmed transaction: {TxHash} in block #{BlockNumber}...",
+        //        transaction.TransactionHash,
+        //        transaction.BlockNumber.Value);
+
+        //    try
+        //    {
+        //        var receipt = await _web3.Eth.Transactions.GetTransactionReceipt.SendRequestAsync(transaction.TransactionHash);
+
+        //        if (receipt == null)
+        //        {
+        //            _logger.LogWarning(
+        //                "Could not retrieve transaction receipt for {TxHash}.",
+        //                transaction.TransactionHash);
+        //            return;
+        //        }
+
+        //        if (receipt.Status.Value == 0)
+        //        {
+        //            _logger.LogWarning(
+        //                "Transaction {TxHash} failed (reverted on-chain). Skipping.",
+        //                transaction.TransactionHash);
+
+        //            string failedOrderId = ExtractOrderIdFromReceipt(receipt);
+        //            var failLog = new FailTxLog
+        //            {
+        //                OrderId = failedOrderId ?? "failed" + Guid.NewGuid().ToString("N"),
+        //                FailData =
+        //               new()
+        //               {
+        //                   From = transaction.From,
+        //                   To = transaction.To,
+        //                   Hash = transaction.TransactionHash,
+        //                   BlockNumber = (long)receipt.BlockNumber.Value,
+        //                   Status = TransactionStatus.Failed,
+        //                   EventType = BlockchainEventType.TransactionFailed
+        //               }
+
+        //            };
+        //            await _transactionLogService.CreateOrderFailedTransactionLogAsync(failLog);
+        //            return;
+        //        }
+
+        //        _logger.LogInformation("Attempting to extract OrderId from receipt for {TxHash}...", transaction.TransactionHash);
+        //        string orderId = ExtractOrderIdFromReceipt(receipt);
+
+        //        if (!string.IsNullOrEmpty(orderId))
+        //        {
+        //            _logger.LogInformation(
+        //                "Successfully extracted OrderId '{OrderId}' from transaction {TxHash}.",
+        //                orderId,
+        //                transaction.TransactionHash);
+
+
+        //            var log = new ConfirmTxLog
+        //            {
+        //                OrderId = orderId,
+        //                ConfirmData =
+        //                new()
+        //                {
+        //                    From = transaction.From,
+        //                    To = transaction.To,
+        //                    Hash = transaction.TransactionHash,
+        //                    BlockNumber = (long)receipt.BlockNumber.Value,
+        //                    Status = TransactionStatus.Confirmed,
+        //                    EventType = BlockchainEventType.TransactionConfirmed
+        //                }
+
+        //            };
+        //            await _transactionLogService.CreateOrderConfirmedTransactionLogAsync(log);
+
+        //        }
+        //        else
+        //        {
+        //            _logger.LogInformation(
+        //                "No relevant OrderId found in transaction {TxHash}. This may be an unrelated transaction.",
+        //                transaction.TransactionHash);
+        //        }
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        _logger.LogError(ex, "An unexpected error occurred while processing transaction {TxHash}.", transaction.TransactionHash);
+        //    }
+        //}
+        //private async Task SubscribeToTransactionConfirmations()
+        //{
+        //    var blockSubscription = new EthNewBlockHeadersObservableSubscription(_webSocketClient);
+
+        //    _transactionSubscription = blockSubscription.GetSubscriptionDataResponsesAsObservable()
+        //        .Select(blockHeader =>
+        //        {
+        //            return Observable.FromAsync(() =>
+        //                _web3.Eth.Blocks.GetBlockWithTransactionsByNumber.SendRequestAsync(new BlockParameter(blockHeader.Number))
+        //            );
+        //        })
+        //        .Switch()
+        //        .Where(block => block?.Transactions != null)
+        //        .SelectMany(block => block.Transactions
+        //            .Where(tx => tx.To != null && tx.To.IsTheSameAddress(_settings.ContractAddress))
+        //        )
+        //        .Subscribe(async transaction =>
+        //        {
+        //            try
+        //            {
+        //                await ProcessTransactionConfirmed(transaction);
+        //            }
+        //            catch (Exception ex)
+        //            {
+        //                _logger.LogError(ex, "Error processing transaction confirmation for {TxHash}", transaction.TransactionHash);
+        //            }
+        //        },
+        //        ex => _logger.LogError(ex, "Error in transaction subscription"),
+        //        () => _logger.LogInformation("Transaction subscription completed"));
+
+        //    await blockSubscription.SubscribeAsync();
+        //}
 
         //private async Task HandleDisconnection(CancellationToken stoppingToken)
         //{
@@ -577,6 +541,36 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
         //    }
 
         //    _logger.LogInformation("Blockchain Event Service stopped.");
+        //}
+
+        //private string ExtractOrderIdFromReceipt(TransactionReceipt receipt)
+        //{
+        //    try
+        //    {
+        //        if (receipt?.Logs == null || !receipt.Logs.Any())
+        //        {
+        //            return null;
+        //        }
+
+        //        var orderExecutedEvents = receipt.DecodeAllEvents<OrderExecutedEventDTO>();
+        //        if (orderExecutedEvents.Any())
+        //        {
+        //            return orderExecutedEvents.First().Event.OrderId;
+        //        }
+
+        //        var orderRegisteredEvents = receipt.DecodeAllEvents<OrderRegisteredEventDTO>();
+        //        if (orderRegisteredEvents.Any())
+        //        {
+        //            return orderRegisteredEvents.First().Event.OrderId;
+        //        }
+
+        //        return null;
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        _logger.LogError(ex, "Error occurred while trying to extract OrderId from transaction receipt with hash: {TxHash}", receipt?.TransactionHash);
+        //        return null;
+        //    }
         //}
 
     }
