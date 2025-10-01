@@ -11,7 +11,7 @@ namespace RZPrime.Utilities.Filters
     public class AuthorizeAttribute : Attribute, IAuthorizationFilter
     {
         private readonly string[] _claims;
-
+        public bool RequireActiveUser { get; set; } = true;
         public AuthorizeAttribute()
         {
         }
@@ -31,6 +31,14 @@ namespace RZPrime.Utilities.Filters
             if (_claims != null && !_claims.Any(c => jwtSecurityToken.HasClaim(Claims.Permission.ToDisplay(), c)))
                 throw new BaseException(ApiResultStatusCode.Forbidden, "Access denied");
 
+            if (RequireActiveUser)
+            {
+                var statusClaim = jwtSecurityToken.Claims
+                    .FirstOrDefault(c => c.Type == Claims.UserStatus.ToDisplay());
+
+                if (statusClaim == null || statusClaim.Value != "Active")
+                    throw new BaseException(ApiResultStatusCode.Forbidden, "At first Sign with your wallet.");
+            }
 
         }
     }

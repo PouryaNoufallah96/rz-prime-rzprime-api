@@ -21,7 +21,7 @@ namespace RZPrime.Api.Controllers.V1
 
         [HttpPost("[action]")]
         [CustomRateLimit(maxAttemptsCount: 60)]
-        [Authorize]
+        [Authorize(RequireActiveUser = false)]
         [SwaggerOperation(Summary = "for swap amount with usdt amount and token name", Tags = ["Price"])]
         public async Task<decimal> GetSwapAmountAsync(GetSwapAmountUpdate update) 
         {

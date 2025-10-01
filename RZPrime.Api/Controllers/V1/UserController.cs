@@ -63,11 +63,19 @@ namespace RZPrime.Api.Controllers.V1
             return await _userService.GetToken(update, Ip);
         }
 
+        [HttpPost("[action]")]
+        [CustomRateLimit(maxAttemptsCount: 35)]
+        [SwaggerOperation(Summary = "For getting JWT token with pure wallet address ", Tags = ["Auth"])]
+        public async Task<ActionResult> GetTokenWithPureWalletAddress(GetTokenWithPureWalletAddress update)
+        {
+            return await _userService.GetTokenWithPureWalletAddress(update, Ip);
+        }
+
 
         [HttpPost("logout")]
         [CustomRateLimit(maxAttemptsCount: 40)]
         [SwaggerOperation(Summary = "For logout user", Tags = ["Auth"])]
-        [Authorize]
+        [Authorize(RequireActiveUser = false)]
         public IActionResult Logout()
         {
             var token = Request.Headers["Authorization"].FirstOrDefault()?.Split(" ").Last();
@@ -83,15 +91,13 @@ namespace RZPrime.Api.Controllers.V1
 
 
         [HttpGet("[action]")]
-        [Authorize]
+        [Authorize(RequireActiveUser = false)]
         [CustomRateLimit(maxAttemptsCount:50)]
         [SwaggerOperation(Summary = "For getting user available stages stats", Tags = ["Stats"])]
         public async Task<List<GetUserStatsResult>> GetUserStatsAsync()
         {
             return await _userService.GetUserStatsAsync(PublicKey, WalletAddress);
         }
-
-
 
 
 

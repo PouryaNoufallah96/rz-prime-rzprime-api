@@ -18,7 +18,7 @@ namespace RZPrime.Api.Controllers.V1
     {
 
         [HttpGet("[action]")]
-        [Authorize]
+        [Authorize(RequireActiveUser = false)]
         [CustomRateLimit(maxAttemptsCount: 60)]
         [SwaggerOperation(Summary = "Get inventory for all tokens", Tags = ["Inventory"])]
         public async Task<ConcurrentDictionary<string, InventoryData>> GetExistingTokensDataAsync()

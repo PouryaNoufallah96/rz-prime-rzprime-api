@@ -249,6 +249,32 @@ namespace RZPrime.Services._User
         }
 
 
+        /// <summary>
+        /// this method is for get jwt token
+        /// here check the nonce and wallet and signature with  nethereium
+        /// throw error if data is not valid
+        /// generate jwt token for valid data for login and update nonce storage
+        /// </summary>
+        /// <param name="update"></param>
+        /// <param name="ip"></param>
+        /// <returns></returns>
+        public async Task<ActionResult> GetTokenWithPureWalletAddress(GetTokenWithPureWalletAddress update, string ip) 
+        {
+            ValidateClientInfo(update.ClientId, update.ClientSecret);
+            var walletAddress = ValidateAndConvertToChecksumAddress(update.WalletAddress);
+
+            var user = new User
+            {
+                WalletAddress = update.WalletAddress,
+                Status = UserStatus.NotVerified,
+                SecurityStamp = "-",
+                UserPublicKey = "GuestUser",
+                Role = UserRole.Customer,
+            };
+
+            return Authenticate(user);
+        }
+
 
         /// <summary>
         /// this method is for get jwt token
@@ -279,7 +305,6 @@ namespace RZPrime.Services._User
 
 
 
-
         /// <summary>
         /// this method use for get user stats in each available stage
         /// </summary>
@@ -288,6 +313,13 @@ namespace RZPrime.Services._User
         /// <returns></returns>
         public async Task<List<GetUserStatsResult>> GetUserStatsAsync(string userPublicKey, string walletAddress)
         {
+
+            if (userPublicKey == "GuestUser")
+            {
+                return GetUserStatsForGuestUserAsync(userPublicKey, walletAddress);
+            }
+
+
             var result = new List<GetUserStatsResult>();
 
             var stages = await _userStageService.GetUserStagesByWalletAddressForInternalUsage(walletAddress, userPublicKey);
@@ -312,6 +344,7 @@ namespace RZPrime.Services._User
 
                 result.Add(new GetUserStatsResult
                 {
+                    UserStatus = UserStatus.Active,
                     Stage = stage.Stage,
                     AvailableLoanAmount = maxBuy - LoanAmount,
                     SumOfMining = 0,
@@ -326,9 +359,26 @@ namespace RZPrime.Services._User
         }
 
 
+        private List<GetUserStatsResult> GetUserStatsForGuestUserAsync(string userPublicKey, string walletAddress)
+        {
+            var ValidatedWalletAddress = ValidateAndConvertToChecksumAddress(walletAddress);
+            return new List<GetUserStatsResult>
+            {
+                new GetUserStatsResult
+                {
+                    UserStatus = UserStatus.NotVerified,
+                    Stage = UserStageType.Regular,
+                    AvailableDropCount = 5,
+                    AvailableLoanAmount = 1000,
+                    MaximumBuyAmount = 1000,
+                    MaximumPayOfMonth = 3,
+                    MinimumBuyAmount = 100, 
+                    Mining = 0,
+                    SumOfMining = 0
+                }
+            };
 
-
-
+        }
 
         #region Private Methods
         /// <summary>
@@ -450,6 +500,7 @@ namespace RZPrime.Services._User
                     new(Claims.WalletAddress.ToDisplay(),user.WalletAddress ?? "no wallet"),
                     new(Claims.PublicKey.ToDisplay(),user.UserPublicKey),
                     new(Claims.SecurityStamp.ToDisplay(),user.SecurityStamp),
+                    new(Claims.UserStatus.ToDisplay(),user.Status.ToString()), 
                     new(Claims.UserType.ToDisplay(),user.Role == UserRole.Customer ? UserType.User.ToString() : UserType.Admin.ToString()),
                 };
 
@@ -502,6 +553,7 @@ namespace RZPrime.Services._User
                     Role = UserRole.Customer,
                     Permissions = [],
                     UserName = null,
+                    Status = UserStatus.Active,
                     PasswordHash = null,
                     LoginDates = [DateTime.UtcNow],
                     Devices = [new DeviceData {

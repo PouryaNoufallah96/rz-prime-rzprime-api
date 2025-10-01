@@ -14,6 +14,7 @@ namespace RZPrime.Services._User
         Task<bool> ActivateNonceAsync(ActivateNonceRequest update);
         NonceResult GetNonce(NonceRequest update, string ip);
         Task<ActionResult> GetToken(NonceVerification update, string ip);
+        Task<ActionResult> GetTokenWithPureWalletAddress(GetTokenWithPureWalletAddress update, string ip);
 
         //stats
         Task<List<GetUserStatsResult>> GetUserStatsAsync(string userPublicKey, string walletAddress);

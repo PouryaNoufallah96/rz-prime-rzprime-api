@@ -49,6 +49,7 @@ namespace RZPrime.Api.Controllers.V1
 
         [HttpPost("[action]")]
         [Authorize]
+        [ActiveUserOnly]
         [CustomRateLimit(maxAttemptsCount: 5)]
         [SwaggerOperation(Summary = "sync single order with blockchain, just for non paid orders", Tags = ["Order"])]
         public async Task<bool> SyncSingleOrderAsync(OrderIdUpdate update)

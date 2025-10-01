@@ -13,12 +13,12 @@
         public static readonly List<PermissionMeta> PermissionsList =
         [
                 // User Permissions
-            new PermissionMeta(CreateUser, nameof(CreateUser), "ایجاد کاربر جدید", ["ceo","hr"]),
-            new PermissionMeta(EditUser, nameof(EditUser), "ویرایش اطلاعات کاربر موجود", ["ceo","hr"]),
-            new PermissionMeta(GetAllUsers, nameof(GetAllUsers), "مشاهده لیست تمام کاربران", ["ceo","hr"]),
-            new PermissionMeta(ArchiveUser, nameof(ArchiveUser), "بایگانی کردن حساب کاربری", ["ceo","hr"]),
-            new PermissionMeta(BanUser, nameof(BanUser), "مسدودسازی حساب کاربری", ["ceo","hr"]),
-            new PermissionMeta(DeleteUser, nameof(DeleteUser), "حذف یک کاربر", ["ceo","hr"]),
+            new PermissionMeta(CreateUser, nameof(CreateUser), "Create a new user", ["ceo","hr"]),
+            new PermissionMeta(EditUser, nameof(EditUser), "Edit existing user information", ["ceo","hr"]),
+            new PermissionMeta(GetAllUsers, nameof(GetAllUsers), "View all users list", ["ceo","hr"]),
+            new PermissionMeta(ArchiveUser, nameof(ArchiveUser), "Archive a user account", ["ceo","hr"]),
+            new PermissionMeta(BanUser, nameof(BanUser), "Ban a user account", ["ceo","hr"]),
+            new PermissionMeta(DeleteUser, nameof(DeleteUser), "Delete a user", ["ceo","hr"]),
         ];
         public static readonly IEnumerable<string> AllRoles = ["CEO", "CFO", "UnitManager", "ProjectManager", "ContractsManager", "HR"];
     }
