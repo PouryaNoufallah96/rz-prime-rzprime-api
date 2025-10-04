@@ -273,7 +273,7 @@ public class BlockChainService : IBlockChainService, ISingletonDependency
 
     public async Task PollMissingLogsAsync()
     {
-        BigInteger _lastProcessedBlock = await _transactionLogService.GetLastCheckedBlockNumberAsync();
+        BigInteger _lastProcessedBlock = await _transactionLogService.GetLastCheckedBlockNumberAsync() + 1;
 
         BigInteger latestBlock = (BigInteger)(await _web3.Eth.Blocks.GetBlockNumber.SendRequestAsync()).Value;
 
