@@ -272,52 +272,64 @@ public class BlockChainService : IBlockChainService, ISingletonDependency
 
     public async Task PollMissingLogsAsync()
     {
-        var _lastProcessedBlock = await _transactionLogService.GetLastCheckedBlockNumberAsync();
+        BigInteger _lastProcessedBlock = await _transactionLogService.GetLastCheckedBlockNumberAsync();
 
-        var fromBlock = _lastProcessedBlock > 0
-            ? new BlockParameter(_lastProcessedBlock.ToHexBigInteger())
-            : BlockParameter.CreateEarliest();
+        BigInteger latestBlock = (BigInteger)(await _web3.Eth.Blocks.GetBlockNumber.SendRequestAsync()).Value;
 
-        var filter = new NewFilterInput
+        if (_lastProcessedBlock >= latestBlock) return;
+
+        const int blockChunk = 1000; 
+        BigInteger fromBlock = _lastProcessedBlock > 0 ? _lastProcessedBlock : BigInteger.Zero;
+
+        while (fromBlock <= latestBlock)
         {
-            FromBlock = fromBlock,
-            ToBlock = BlockParameter.CreateLatest(),
-            Address = new[] { _settings.ContractAddress } 
-        };
+            BigInteger toBlock = BigInteger.Min(fromBlock + blockChunk - 1, latestBlock);
 
-        try
-        {
-            var logs = await _web3.Eth.Filters.GetLogs.SendRequestAsync(filter);
-            foreach (var log in logs)
+            var filter = new NewFilterInput
             {
-                var filterLog = log as FilterLog;
-                if (filterLog == null) continue;
+                FromBlock = new BlockParameter(new HexBigInteger(fromBlock)),
+                ToBlock = new BlockParameter(new HexBigInteger(toBlock)),
+                Address = new[] { _settings.ContractAddress }
+            };
 
-                _logger.LogInformation("Polled Log: Address={Address}, Topics={@Topics}, Data={Data}, Tx={TxHash}",
-                                       filterLog.Address, filterLog.Topics, filterLog.Data, filterLog.TransactionHash);
+            try
+            {
+                var logs = await _web3.Eth.Filters.GetLogs.SendRequestAsync(filter);
 
-               
-                try
+                foreach (var log in logs)
                 {
-                    var orderExecuted = filterLog.DecodeEvent<OrderExecutedEventDTO>();
-                    if (orderExecuted != null)
+                    var filterLog = log as FilterLog;
+                    if (filterLog == null) continue;
+
+                    _logger.LogInformation("Polled Log: Address={Address}, Topics={@Topics}, Data={Data}, Tx={TxHash}",
+                        filterLog.Address, filterLog.Topics, filterLog.Data, filterLog.TransactionHash);
+
+                    try
                     {
-                        await LogOrderExecutedEvent(orderExecuted, filterLog);
-                        _logger.LogInformation("Polled Log to db: Hash={hash}",
-                                       filterLog.TransactionHash);
+                        var orderExecuted = filterLog.DecodeEvent<OrderExecutedEventDTO>();
+                        if (orderExecuted != null)
+                        {
+                            await LogOrderExecutedEvent(orderExecuted, filterLog);
+                            _logger.LogInformation("Polled Log saved to DB: TxHash={TxHash}", filterLog.TransactionHash);
+                        }
                     }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error decoding polled log");
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error decoding polled log");
+                    }
+
+                    _lastProcessedBlock = BigInteger.Max(_lastProcessedBlock, filterLog.BlockNumber.Value + 1);
                 }
             }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error polling missing logs");
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error polling logs from {FromBlock} to {ToBlock}", fromBlock, toBlock);
+            }
+
+            fromBlock = toBlock + 1;
         }
     }
+
 
     private async Task LogOrderExecutedEvent(EventLog<OrderExecutedEventDTO> eventLog, FilterLog log)
     {
