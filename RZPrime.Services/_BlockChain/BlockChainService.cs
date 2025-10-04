@@ -311,7 +311,7 @@ public class BlockChainService : IBlockChainService, ISingletonDependency
                         if (orderExecuted != null)
                         {
                             await LogOrderExecutedEvent(orderExecuted, filterLog);
-                            _logger.LogInformation("Polled Log saved to DB: TxHash={TxHash}", filterLog.TransactionHash);
+                            _logger.LogInformation("Polled Log saved to DB: TxHash={TxHash} , OrderId:{OrderId}", filterLog.TransactionHash, orderExecuted.Event.OrderId);
                         }
                     }
                     catch (Exception ex)
