@@ -1,30 +1,31 @@
-﻿using Nethereum.Contracts;
+﻿using Microsoft.Extensions.Logging;
+using Nethereum.ABI.FunctionEncoding;
+using Nethereum.ABI.Model;
+using Nethereum.Contracts;
+using Nethereum.Contracts.Standards.ERC20.TokenList;
+using Nethereum.Hex.HexConvertors.Extensions;
 using Nethereum.Hex.HexTypes;
 using Nethereum.RPC.Eth.DTOs;
+using Nethereum.Util;
 using Nethereum.Web3;
 using Nethereum.Web3.Accounts;
-using System.Numerics;
-using Microsoft.Extensions.Logging;
-using Nethereum.ABI.FunctionEncoding;
-using RZPrime.Services._BlockChain.DTOs.Results;
-using RZPrime.Services._BlockChain.DTOs;
-using static RZPrime.Utilities.Constants.RegisterMode;
-using RZPrime.Services._BlockChain;
-using RZPrime.Services._BlockChain.DTOs.Settings;
-using Nethereum.Util;
 using RZPrime.Domain.Collections;
-using RZPrime.Utilities.Extension;
-using System.Reactive.Linq;
+using RZPrime.DTOs.Contracts;
+using RZPrime.Services._BlockChain;
+using RZPrime.Services._BlockChain.DTOs;
+using RZPrime.Services._BlockChain.DTOs.Results;
+using RZPrime.Services._BlockChain.DTOs.Settings;
+using RZPrime.Services._BlockChainWebSocket.DTOs;
+using RZPrime.Services._PancakeSwap;
+using RZPrime.Services._Price.DTOs.Settings;
 using RZPrime.Services._TransactionLog;
 using RZPrime.Services._TransactionLog.DTOs;
 using RZPrime.Utilities.Exceptions.Common;
-using RZPrime.DTOs.Contracts;
-using RZPrime.Services._Price.DTOs.Settings;
-using RZPrime.Services._BlockChainWebSocket.DTOs;
-using Nethereum.Hex.HexConvertors.Extensions;
-using RZPrime.Services._PancakeSwap;
-using Nethereum.ABI.Model;
-using Nethereum.Contracts.Standards.ERC20.TokenList;
+using RZPrime.Utilities.Extension;
+using System.Numerics;
+using System.Reactive.Linq;
+using System.Threading;
+using static RZPrime.Utilities.Constants.RegisterMode;
 
 public class BlockChainService : IBlockChainService, ISingletonDependency
 {
@@ -327,6 +328,7 @@ public class BlockChainService : IBlockChainService, ISingletonDependency
             }
 
             fromBlock = toBlock + 1;
+            await Task.Delay(5000);
         }
     }
 
