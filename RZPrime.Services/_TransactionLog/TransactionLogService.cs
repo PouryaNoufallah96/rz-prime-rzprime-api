@@ -66,7 +66,7 @@ namespace RZPrime.Services._TransactionLog
                     }
                 }
                 else
-                {
+                {                  
                     var newLog = new TransactionLog
                     {
                         TokenName = log.TokenName,

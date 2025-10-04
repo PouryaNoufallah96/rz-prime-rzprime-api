@@ -61,9 +61,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("Blockchain Event Service starting...");
-            _lastProcessedBlock = await _transactionLogService.GetLastCheckedBlockNumberAsync();
-            _logger.LogInformation($"starting block is : {_lastProcessedBlock}");
+            
 
             while (!stoppingToken.IsCancellationRequested)
             {
@@ -86,7 +84,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
 
                             var hexBlock = await _web3.Client.SendRequestAsync<string>("eth_blockNumber");
                             var blockNumber = new Nethereum.Hex.HexTypes.HexBigInteger(hexBlock).Value;
-                            _logger.LogDebug("WS Heartbeat block: {BlockNumber}", blockNumber);
+                            //_logger.LogDebug("WS Heartbeat block: {BlockNumber}", blockNumber);
                         }
                         catch (Exception ex)
                         {
@@ -176,6 +174,9 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
         {
             _logger.LogInformation("...........ConnectAndSubscribe touched............");
 
+            _logger.LogInformation("Blockchain Event Service starting...");
+            _lastProcessedBlock = await _transactionLogService.GetLastCheckedBlockNumberAsync();
+            _logger.LogInformation($"starting block is : {_lastProcessedBlock}");
             CleanupConnection();
 
             var currestWsUrl = GetCurrentWsUrl();
@@ -256,7 +257,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                             if (orderExecuted != null)
                             {
                                 _logger.LogInformation("OrderExecuted: {OrderId} by {User}", orderExecuted.Event.OrderId, orderExecuted.Event.User);
-                                _lastProcessedBlock = log.BlockNumber.Value + 1;
+                                //_lastProcessedBlock = log.BlockNumber.Value + 1;
 
                                 await LogOrderExecutedEvent(orderExecuted, log);
                                 return;
@@ -282,9 +283,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             var filter = new NewFilterInput
             {
                 Address = new[] { _settings.ContractAddress },
-                FromBlock = _lastProcessedBlock > 0
-                    ? new BlockParameter(_lastProcessedBlock.ToHexBigInteger())
-                    : BlockParameter.CreateLatest()
+                FromBlock = new BlockParameter(_lastProcessedBlock.ToHexBigInteger())             
             };
 
             await subscription.SubscribeAsync(filter);
