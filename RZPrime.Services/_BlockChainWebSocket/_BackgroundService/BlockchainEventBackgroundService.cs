@@ -85,6 +85,16 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                             var hexBlock = await _web3.Client.SendRequestAsync<string>("eth_blockNumber");
                             var blockNumber = new Nethereum.Hex.HexTypes.HexBigInteger(hexBlock).Value;
                             //_logger.LogDebug("WS Heartbeat block: {BlockNumber}", blockNumber);
+
+                            if (blockNumber > _lastProcessedBlock + 10) 
+                            {
+                                _logger.LogWarning("No blockchain events received for {Blocks} blocks. Forcing resubscribe...",
+                                                   blockNumber - _lastProcessedBlock);
+
+                                await TryConnectWithRetryAsync(stoppingToken);
+                                _logger.LogInformation("Re-subscribed due to inactivity.");
+                                break;
+                            }
                         }
                         catch (Exception ex)
                         {
