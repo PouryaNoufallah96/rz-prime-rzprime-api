@@ -61,7 +61,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            
+
 
             while (!stoppingToken.IsCancellationRequested)
             {
@@ -86,15 +86,15 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                             var blockNumber = new Nethereum.Hex.HexTypes.HexBigInteger(hexBlock).Value;
                             //_logger.LogDebug("WS Heartbeat block: {BlockNumber}", blockNumber);
 
-                            if (blockNumber > _lastProcessedBlock + 10) 
-                            {
-                                _logger.LogWarning("No blockchain events received for {Blocks} blocks. Forcing resubscribe...",
-                                                   blockNumber - _lastProcessedBlock);
+                            //if (blockNumber > _lastProcessedBlock + 10) 
+                            //{
+                            //    _logger.LogWarning("No blockchain events received for {Blocks} blocks. Forcing resubscribe...",
+                            //                       blockNumber - _lastProcessedBlock);
 
-                                await TryConnectWithRetryAsync(stoppingToken);
-                                _logger.LogInformation("Re-subscribed due to inactivity.");
-                                break;
-                            }
+                            //    await TryConnectWithRetryAsync(stoppingToken);
+                            //    _logger.LogInformation("Re-subscribed due to inactivity.");
+                            //    break;
+                            //}
                         }
                         catch (Exception ex)
                         {
@@ -293,7 +293,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             var filter = new NewFilterInput
             {
                 Address = new[] { _settings.ContractAddress },
-                FromBlock = new BlockParameter(_lastProcessedBlock.ToHexBigInteger())             
+                FromBlock = new BlockParameter(_lastProcessedBlock.ToHexBigInteger())
             };
 
             await subscription.SubscribeAsync(filter);

@@ -270,6 +270,117 @@ public class BlockChainService : IBlockChainService, ISingletonDependency
         }
     }
 
+    public async Task PollMissingLogsAsync()
+    {
+        var _lastProcessedBlock = await _transactionLogService.GetLastCheckedBlockNumberAsync();
+
+        var fromBlock = _lastProcessedBlock > 0
+            ? new BlockParameter(_lastProcessedBlock.ToHexBigInteger())
+            : BlockParameter.CreateEarliest();
+
+        var filter = new NewFilterInput
+        {
+            FromBlock = fromBlock,
+            ToBlock = BlockParameter.CreateLatest(),
+            Address = new[] { _settings.ContractAddress } 
+        };
+
+        try
+        {
+            var logs = await _web3.Eth.Filters.GetLogs.SendRequestAsync(filter);
+            foreach (var log in logs)
+            {
+                var filterLog = log as FilterLog;
+                if (filterLog == null) continue;
+
+                _logger.LogInformation("Polled Log: Address={Address}, Topics={@Topics}, Data={Data}, Tx={TxHash}",
+                                       filterLog.Address, filterLog.Topics, filterLog.Data, filterLog.TransactionHash);
+
+               
+                try
+                {
+                    var orderExecuted = filterLog.DecodeEvent<OrderExecutedEventDTO>();
+                    if (orderExecuted != null)
+                    {
+                        await LogOrderExecutedEvent(orderExecuted, filterLog);
+                        _logger.LogInformation("Polled Log to db: Hash={hash}",
+                                       filterLog.TransactionHash);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error decoding polled log");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error polling missing logs");
+        }
+    }
+
+    private async Task LogOrderExecutedEvent(EventLog<OrderExecutedEventDTO> eventLog, FilterLog log)
+    {
+        var transactionLog = new ExecutedTxLog
+        {
+            OrderId = eventLog.Event.OrderId,
+            ExecuteData = new()
+            {
+                Hash = log.TransactionHash,
+                From = log.Address,
+                To = eventLog.Event.User,
+                Status = TransactionStatus.Pending,
+                BlockNumber = (long)log.BlockNumber.Value,
+                EventType = BlockchainEventType.OrderExecuted,
+                Amount = Web3.Convert.FromWei(eventLog.Event.PayAmount),
+            }
+        };
+
+        await _transactionLogService.CreateOrderExecutedTransactionLogAsync(transactionLog);
+        _logger.LogInformation("Logged OrderExecuted event for order {OrderId}", eventLog.Event.OrderId);
+    }
+
+    public async Task PrintTransactionLogsAsync(string txHash)
+    {
+        if (string.IsNullOrWhiteSpace(txHash))
+        {
+            Console.WriteLine("Transaction hash is empty!");
+            return;
+        }
+
+        try
+        {
+            var receipt = await _web3.Eth.Transactions.GetTransactionReceipt
+                .SendRequestAsync(txHash);
+
+            if (receipt == null)
+            {
+                Console.WriteLine($"Transaction receipt not found for {txHash}");
+                return;
+            }
+
+            Console.WriteLine($"Transaction Status: {(receipt.Status.Value == 1 ? "Success" : "Failed")}");
+            Console.WriteLine($"Block Number: {receipt.BlockNumber.Value}");
+            //Console.WriteLine($"Number of Logs: {receipt.Logs.Count}");
+
+            foreach (var log in receipt.Logs)
+            {
+                var logObj = log as FilterLog;
+                if (logObj != null)
+                {
+                    Console.WriteLine("------ Log ------");
+                    Console.WriteLine($"Address: {logObj.Address}");
+                    Console.WriteLine($"Topics: {string.Join(", ", logObj.Topics)}");
+                    Console.WriteLine($"Data: {logObj.Data}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error fetching transaction receipt: {ex.Message}");
+        }
+    }
+
 
     #endregion
 

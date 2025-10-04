@@ -39,5 +39,8 @@ namespace RZPrime.Services._BlockChain
         // Utility Methods
         decimal ConvertFromWei(BigInteger weiAmount, int decimals = 18);
         BigInteger ConvertToWei(decimal amount, int decimals = 18);
+
+        Task PrintTransactionLogsAsync(string txHash);
+        Task PollMissingLogsAsync();
     }
 }

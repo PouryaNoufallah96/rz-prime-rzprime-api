@@ -15,12 +15,12 @@ namespace RZPrime.Api.Controllers.V1
     [ApiResultFilter]
     [ApiVersion("1")]
     [Route("api/v{version:apiVersion}/[controller]")]
-    public class TestController(/*IBlockChainService blockChainService, IPancakeSwapService _pancakeSwapService*/) : ApiBaseController
+    public class TestController(/*IBlockChainService blockChainService*/) : ApiBaseController
     {
         //[HttpGet("[action]")]
-        //public string Test()
+        //public Task PrintTransactionLogsAsync(string txHash)
         //{
-        //    return "Hello world";
+        //    return blockChainService.PrintTransactionLogsAsync(txHash);
         //}
 
 
