@@ -271,66 +271,66 @@ public class BlockChainService : IBlockChainService, ISingletonDependency
         }
     }
 
-    public async Task PollMissingLogsAsync()
-    {
-        BigInteger _lastProcessedBlock = await _transactionLogService.GetLastCheckedBlockNumberAsync() + 1;
+    //public async Task PollMissingLogsAsync()
+    //{
+    //    BigInteger _lastProcessedBlock = await _transactionLogService.GetLastCheckedBlockNumberAsync() + 1;
 
-        BigInteger latestBlock = (BigInteger)(await _web3.Eth.Blocks.GetBlockNumber.SendRequestAsync()).Value;
+    //    BigInteger latestBlock = (BigInteger)(await _web3.Eth.Blocks.GetBlockNumber.SendRequestAsync()).Value;
 
-        if (_lastProcessedBlock >= latestBlock) return;
+    //    if (_lastProcessedBlock >= latestBlock) return;
 
-        const int blockChunk = 1000; 
-        BigInteger fromBlock = _lastProcessedBlock > 0 ? _lastProcessedBlock : BigInteger.Zero;
+    //    const int blockChunk = 1000; 
+    //    BigInteger fromBlock = _lastProcessedBlock > 0 ? _lastProcessedBlock : BigInteger.Zero;
 
-        while (fromBlock <= latestBlock)
-        {
-            BigInteger toBlock = BigInteger.Min(fromBlock + blockChunk - 1, latestBlock);
+    //    while (fromBlock <= latestBlock)
+    //    {
+    //        BigInteger toBlock = BigInteger.Min(fromBlock + blockChunk - 1, latestBlock);
 
-            var filter = new NewFilterInput
-            {
-                FromBlock = new BlockParameter(new HexBigInteger(fromBlock)),
-                ToBlock = new BlockParameter(new HexBigInteger(toBlock)),
-                Address = new[] { _settings.ContractAddress }
-            };
+    //        var filter = new NewFilterInput
+    //        {
+    //            FromBlock = new BlockParameter(new HexBigInteger(fromBlock)),
+    //            ToBlock = new BlockParameter(new HexBigInteger(toBlock)),
+    //            Address = new[] { _settings.ContractAddress }
+    //        };
 
-            try
-            {
-                var logs = await _web3.Eth.Filters.GetLogs.SendRequestAsync(filter);
+    //        try
+    //        {
+    //            var logs = await _web3.Eth.Filters.GetLogs.SendRequestAsync(filter);
 
-                foreach (var log in logs)
-                {
-                    var filterLog = log as FilterLog;
-                    if (filterLog == null) continue;
+    //            foreach (var log in logs)
+    //            {
+    //                var filterLog = log as FilterLog;
+    //                if (filterLog == null) continue;
 
-                    _logger.LogInformation("Polled Log: Address={Address}, Topics={@Topics}, Data={Data}, Tx={TxHash}",
-                        filterLog.Address, filterLog.Topics, filterLog.Data, filterLog.TransactionHash);
+    //                _logger.LogInformation("Polled Log: Address={Address}, Topics={@Topics}, Data={Data}, Tx={TxHash}",
+    //                    filterLog.Address, filterLog.Topics, filterLog.Data, filterLog.TransactionHash);
 
-                    try
-                    {
-                        var orderExecuted = filterLog.DecodeEvent<OrderExecutedEventDTO>();
-                        if (orderExecuted != null)
-                        {
-                            await LogOrderExecutedEvent(orderExecuted, filterLog);
-                            _logger.LogInformation("Polled Log saved to DB: TxHash={TxHash} , OrderId:{OrderId}", filterLog.TransactionHash, orderExecuted.Event.OrderId);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error decoding polled log");
-                    }
+    //                try
+    //                {
+    //                    var orderExecuted = filterLog.DecodeEvent<OrderExecutedEventDTO>();
+    //                    if (orderExecuted != null)
+    //                    {
+    //                        await LogOrderExecutedEvent(orderExecuted, filterLog);
+    //                        _logger.LogInformation("Polled Log saved to DB: TxHash={TxHash} , OrderId:{OrderId}", filterLog.TransactionHash, orderExecuted.Event.OrderId);
+    //                    }
+    //                }
+    //                catch (Exception ex)
+    //                {
+    //                    _logger.LogError(ex, "Error decoding polled log");
+    //                }
 
-                    _lastProcessedBlock = BigInteger.Max(_lastProcessedBlock, filterLog.BlockNumber.Value + 1);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error polling logs from {FromBlock} to {ToBlock}", fromBlock, toBlock);
-            }
+    //                _lastProcessedBlock = BigInteger.Max(_lastProcessedBlock, filterLog.BlockNumber.Value + 1);
+    //            }
+    //        }
+    //        catch (Exception ex)
+    //        {
+    //            _logger.LogError(ex, "Error polling logs from {FromBlock} to {ToBlock}", fromBlock, toBlock);
+    //        }
 
-            fromBlock = toBlock + 1;
-            await Task.Delay(5000);
-        }
-    }
+    //        fromBlock = toBlock + 1;
+    //        await Task.Delay(5000);
+    //    }
+    //}
 
 
     private async Task LogOrderExecutedEvent(EventLog<OrderExecutedEventDTO> eventLog, FilterLog log)

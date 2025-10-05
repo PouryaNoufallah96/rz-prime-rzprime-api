@@ -41,6 +41,6 @@ namespace RZPrime.Services._BlockChain
         BigInteger ConvertToWei(decimal amount, int decimals = 18);
 
         Task PrintTransactionLogsAsync(string txHash);
-        Task PollMissingLogsAsync();
+        //Task PollMissingLogsAsync();
     }
 }
