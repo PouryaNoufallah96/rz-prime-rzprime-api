@@ -475,8 +475,8 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
         private async Task PollMissingLogsAsync()
         {
 
-
-            BigInteger latestBlock = (BigInteger)(await _web3.Eth.Blocks.GetBlockNumber.SendRequestAsync()).Value;
+            var _web3Client = new Web3(_settings.WsUrl);
+            BigInteger latestBlock = (BigInteger)(await _web3Client.Eth.Blocks.GetBlockNumber.SendRequestAsync()).Value;
 
             if (_lastProcessedBlock >= latestBlock) return;
 
@@ -496,7 +496,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
 
                 try
                 {
-                    var logs = await _web3.Eth.Filters.GetLogs.SendRequestAsync(filter);
+                    var logs = await _web3Client.Eth.Filters.GetLogs.SendRequestAsync(filter);
 
                     foreach (var log in logs)
                     {
