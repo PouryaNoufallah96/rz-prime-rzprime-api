@@ -572,10 +572,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                             _logger.LogError(ex, "Error decoding polled log");
                         }
 
-                        lock (_blockLock)
-                        {
-                            _lastProcessedBlock = BigInteger.Max(_lastProcessedBlock, filterLog.BlockNumber.Value + 1);
-                        }
+                        
                     }
                 }
                 catch (Exception ex)
@@ -585,6 +582,10 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
 
                 fromBlock = toBlock + 1;
                 await Task.Delay(3000);
+            }
+            lock (_blockLock)
+            {
+                _lastProcessedBlock = BigInteger.Max(_lastProcessedBlock, latestBlock);
             }
         }
 
