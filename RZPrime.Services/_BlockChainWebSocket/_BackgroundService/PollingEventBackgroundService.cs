@@ -84,7 +84,6 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                         var filterLog = log as FilterLog;
                         if (filterLog == null) continue;
 
-
                         try
                         {
                             var orderExecuted = filterLog.DecodeEvent<OrderExecutedEventDTO>();
@@ -111,6 +110,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             lock (_blockLock)
             {
                 _lastProcessedBlock = BigInteger.Max(_lastProcessedBlock, latestBlock);
+                _logger.LogInformation("-------------- Poling until {latestBlock}", latestBlock);
             }
         }
 

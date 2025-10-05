@@ -77,7 +77,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                     {
                         if ((DateTime.UtcNow - _lastEventReceived).TotalMinutes > 3)
                         {
-                            _logger.LogWarning("No blockchain events received in the last 3 minutes. Reconnecting...");
+                            _logger.LogWarning("----------- No blockchain events received in the last 3 minutes. Reconnecting...");
                             await TryConnectWithRetryAsync(stoppingToken);
                         }
 
@@ -232,12 +232,12 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                 async ex =>
                 {
                     _logger.LogError(ex, "Error in subscription. Reconnecting...");
-                    _ = Task.Run(async () => await TryConnectWithRetryAsync(cancellationToken));
+                    //_ = Task.Run(async () => await TryConnectWithRetryAsync(cancellationToken));
                 },
                 () =>
                 {
                     _logger.LogWarning("Subscription completed unexpectedly. Reconnecting...");
-                    _ = Task.Run(async () => await TryConnectWithRetryAsync(cancellationToken));
+                    //_ = Task.Run(async () => await TryConnectWithRetryAsync(cancellationToken));
                 });
 
             var filter = new NewFilterInput
@@ -321,12 +321,12 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                     async ex =>
                     {
                         _logger.LogError(ex, "Error in incoming transfer subscription. Reconnecting...");
-                        _ = Task.Run(async () => await TryConnectWithRetryAsync(cancellationToken));
+                        //_ = Task.Run(async () => await TryConnectWithRetryAsync(cancellationToken));
                     },
                     () =>
                     {
                         _logger.LogWarning("Incoming transfer subscription completed unexpectedly. Reconnecting...");
-                        _ = Task.Run(async () => await TryConnectWithRetryAsync(cancellationToken));
+                        //_ = Task.Run(async () => await TryConnectWithRetryAsync(cancellationToken));
                     }
                 );
 
