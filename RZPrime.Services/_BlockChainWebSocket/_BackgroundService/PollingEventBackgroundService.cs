@@ -31,7 +31,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             {
                 try
                 {
-                    _logger.LogInformation("------------------ Polling missing logs before subscription restart...");
+                    //_logger.LogInformation("------------------ Polling missing logs before subscription restart...");
                     await PollMissingLogsAsync();
 
                     await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
