@@ -78,9 +78,10 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
 
                     while (_webSocketClient?.IsStarted == true && !stoppingToken.IsCancellationRequested)
                     {
-                        if ((DateTime.UtcNow - _lastEventReceived).TotalMinutes > 3)
+                        var now = DateTime.UtcNow;
+                        if ((now - _lastEventReceived).TotalMinutes > 2)
                         {
-                            _logger.LogWarning("----------- No blockchain events received in the last 3 minutes. Reconnecting...");
+                            _logger.LogWarning("----------- No blockchain events received in the last 3 minutes {time}. Reconnecting...", now);
                             await Task.Delay(2000, stoppingToken);
                             await TryConnectWithRetryAsync(stoppingToken);
 
