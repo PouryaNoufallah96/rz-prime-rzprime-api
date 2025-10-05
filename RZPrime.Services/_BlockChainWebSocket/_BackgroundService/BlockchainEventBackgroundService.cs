@@ -40,6 +40,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
         private BigInteger _lastProcessedBlock = 0;
         private readonly object _blockLock = new object();
         private bool _useSecondaryWsUrl = false;
+        private DateTime _lastEventReceived = DateTime.UtcNow;
         public BlockchainEventBackgroundService(
             ILogger<BlockchainEventBackgroundService> logger,
             BlockchainWebSocketSetting settings,
@@ -68,16 +69,21 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             {
                 try
                 {
-                    _logger.LogInformation("------------------ Polling missing logs before subscription restart...");
-                    await PollMissingLogsAsync();
-
-
+                   
                     await TryConnectWithRetryAsync(stoppingToken);
                     _logger.LogInformation("-----------------------Successfully connected and subscribed to blockchain events");
 
+                    while (_webSocketClient?.IsStarted == true && !stoppingToken.IsCancellationRequested)
+                    {
+                        if ((DateTime.UtcNow - _lastEventReceived).TotalMinutes > 3)
+                        {
+                            _logger.LogWarning("No blockchain events received in the last 3 minutes. Reconnecting...");
+                            await TryConnectWithRetryAsync(stoppingToken);
+                        }
 
-                    await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
-
+                        await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
+                    }
+                    _logger.LogWarning(" WebSocket stopped unexpectedly, reconnecting...");
                 }
                 catch (OperationCanceledException)
                 {
@@ -154,23 +160,20 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             _webSocketClient = new StreamingWebSocketClient(currestWsUrl);
             _web3 = new Web3(currestWsUrl);
 
+            
             try
             {
                 await _webSocketClient.StartAsync();
-                _logger.LogInformation("WebSocket client connected.");
 
-                // Subscribe to contract events
+              
                 await SubscribeToContractEventsAsync(cancellationToken);
-                _logger.LogInformation("Contract events subscription active.");
 
                 //// Subscribe to incoming transfers
                 //await SubscribeToTransactionConfirmationsAsync();
                 //_logger.LogInformation("Incoming confirm subscription active.");
 
 
-                // Subscribe to incoming transfers
                 await SubscribeToIncomingTransfersAsync(cancellationToken);
-                _logger.LogInformation("Incoming transfers subscription active.");
 
                 _logger.LogInformation("All subscriptions active.");
             }
@@ -229,7 +232,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                 async ex =>
                 {
                     _logger.LogError(ex, "Error in subscription. Reconnecting...");
-                    await TryConnectWithRetryAsync(cancellationToken);
+                    _ = Task.Run(async () => await TryConnectWithRetryAsync(cancellationToken));
                 },
                 () =>
                 {
@@ -318,7 +321,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                     async ex =>
                     {
                         _logger.LogError(ex, "Error in incoming transfer subscription. Reconnecting...");
-                        await TryConnectWithRetryAsync(cancellationToken);
+                        _ = Task.Run(async () => await TryConnectWithRetryAsync(cancellationToken));
                     },
                     () =>
                     {
@@ -391,6 +394,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
 
         private async Task LogOrderExecutedEvent(EventLog<OrderExecutedEventDTO> eventLog, FilterLog log)
         {
+
             var block = (long)log.BlockNumber.Value;
             var transactionLog = new ExecutedTxLog
             {
@@ -413,6 +417,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             }
 
             await _transactionLogService.CreateOrderExecutedTransactionLogAsync(transactionLog);
+            _lastEventReceived = DateTime.UtcNow;
             _logger.LogInformation("Logged OrderExecuted event for order {OrderId}", eventLog.Event.OrderId);
         }
 
@@ -524,71 +529,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             }
         }
 
-        private async Task PollMissingLogsAsync()
-        {
-
-            var _web3Client = new Web3(_settings.WsUrl);
-            BigInteger latestBlock = (BigInteger)(await _web3Client.Eth.Blocks.GetBlockNumber.SendRequestAsync()).Value;
-
-            if (_lastProcessedBlock >= latestBlock) return;
-
-            const int blockChunk = 2000;
-            BigInteger fromBlock = GetLastProcessedBlock();
-
-            while (fromBlock <= latestBlock)
-            {
-                BigInteger toBlock = BigInteger.Min(fromBlock + blockChunk - 1, latestBlock);
-
-                var filter = new NewFilterInput
-                {
-                    FromBlock = new BlockParameter(new HexBigInteger(fromBlock)),
-                    ToBlock = new BlockParameter(new HexBigInteger(toBlock)),
-                    Address = new[] { _settings.ContractAddress }
-                };
-
-                try
-                {
-                    var logs = await _web3Client.Eth.Filters.GetLogs.SendRequestAsync(filter);
-
-                    foreach (var log in logs)
-                    {
-                        var filterLog = log as FilterLog;
-                        if (filterLog == null) continue;
-
-                        //_logger.LogInformation("Polled Log: Address={Address}, Topics={@Topics}, Data={Data}, Tx={TxHash}",
-                        //    filterLog.Address, filterLog.Topics, filterLog.Data, filterLog.TransactionHash);
-
-                        try
-                        {
-                            var orderExecuted = filterLog.DecodeEvent<OrderExecutedEventDTO>();
-                            if (orderExecuted != null)
-                            {
-                                await LogOrderExecutedEvent(orderExecuted, filterLog);
-                                _logger.LogInformation("Polled Log saved to DB: TxHash={TxHash} , OrderId:{OrderId}", filterLog.TransactionHash, orderExecuted.Event.OrderId);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Error decoding polled log");
-                        }
-
-                        
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error polling logs from {FromBlock} to {ToBlock}", fromBlock, toBlock);
-                }
-
-                fromBlock = toBlock + 1;
-                await Task.Delay(3000);
-            }
-            lock (_blockLock)
-            {
-                _lastProcessedBlock = BigInteger.Max(_lastProcessedBlock, latestBlock);
-            }
-        }
-
+       
 
 
 
