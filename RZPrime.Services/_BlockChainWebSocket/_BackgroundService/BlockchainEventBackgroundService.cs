@@ -68,12 +68,12 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             {
                 try
                 {
-                    _logger.LogInformation("Polling missing logs before subscription restart...");
+                    _logger.LogInformation("------------------ Polling missing logs before subscription restart...");
                     await PollMissingLogsAsync();
 
 
                     await TryConnectWithRetryAsync(stoppingToken);
-                    _logger.LogInformation("Successfully connected and subscribed to blockchain events");
+                    _logger.LogInformation("-----------------------Successfully connected and subscribed to blockchain events");
 
 
                     await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
@@ -253,6 +253,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                 return _lastProcessedBlock.ToHexBigInteger();
             }
         }
+
         private async Task ProcessContractEventLogAsync(FilterLog log)
         {
             try
@@ -281,8 +282,8 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                 _logger.LogError(ex, "Error decoding blockchain event");
             }
         }
-
-        private async Task SubscribeToIncomingTransfersAsync(CancellationToken cancellationToken)
+        
+        private async Task SubscribeToIncomingTransfersAsync(CancellationToken cancellationToken) 
         {
             var tokenAddresses = _availableTokensSettings
                 .Select(t => t.Address.ToLower())
@@ -290,23 +291,41 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
 
             var subscription = new EthLogsObservableSubscription(_webSocketClient);
 
-            var safeObservable = subscription.GetSubscriptionDataResponsesAsObservable()
-                .Where(log => tokenAddresses.Contains(log.Address.ToLower()))
-                .Select(log => Observable.FromAsync(() => ProcessIncomingTransferLogAsync(log)))
-                .Concat();
+            _incomingTransferSubscription = subscription.GetSubscriptionDataResponsesAsObservable()
+                .Subscribe(
+                    async log =>
+                    {
+                        try
+                        {
+                            if (tokenAddresses.Contains(log.Address.ToLower()))
+                            {
+                                var transferEvent = log.DecodeEvent<TransferEventDTO>();
+                                if (transferEvent != null && transferEvent.Event.To.IsTheSameAddress(_settings.ContractAddress))
+                                {
+                                    var token = _availableTokensSettings.FirstOrDefault(t => t.Address.IsTheSameAddress(log.Address));
+                                    var amount = Web3.Convert.FromWei(transferEvent.Event.Value);
+                                    _logger.LogInformation("Incoming {Token} Transfer: {Amount} from {From}", token.Name, amount, transferEvent.Event.From);
 
-            _incomingTransferSubscription = safeObservable.Subscribe(
-                _ => { },
-                async ex =>
-                {
-                    _logger.LogError(ex, "Error in incoming transfer subscription. Reconnecting...");
-                    await TryConnectWithRetryAsync(cancellationToken);
-                },
-                () =>
-                {
-                    _logger.LogWarning("Incoming transfer subscription completed unexpectedly. Reconnecting...");
-                    _ = Task.Run(async () => await TryConnectWithRetryAsync(cancellationToken));
-                });
+                                    await _inventoryService.SyncInventoryQuantityAsync(token.Name.ToUpper());
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError($"Error processing incoming token transfer {ex.Message}");
+                        }
+                    },
+                    async ex =>
+                    {
+                        _logger.LogError(ex, "Error in incoming transfer subscription. Reconnecting...");
+                        await TryConnectWithRetryAsync(cancellationToken);
+                    },
+                    () =>
+                    {
+                        _logger.LogWarning("Incoming transfer subscription completed unexpectedly. Reconnecting...");
+                        _ = Task.Run(async () => await TryConnectWithRetryAsync(cancellationToken));
+                    }
+                );
 
             var filter = new NewFilterInput
             {
@@ -315,27 +334,60 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
 
             await subscription.SubscribeAsync(filter);
         }
+        //private async Task SubscribeToIncomingTransfersAsync(CancellationToken cancellationToken)
+        //{
+        //    var tokenAddresses = _availableTokensSettings
+        //        .Select(t => t.Address.ToLower())
+        //        .ToList();
 
-        private async Task ProcessIncomingTransferLogAsync(FilterLog log)
-        {
-            try
-            {
-                var transferEvent = log.DecodeEvent<TransferEventDTO>();
-                if (transferEvent != null && transferEvent.Event.To.IsTheSameAddress(_settings.ContractAddress))
-                {
-                    var token = _availableTokensSettings.FirstOrDefault(t => t.Address.IsTheSameAddress(log.Address));
-                    var amount = Web3.Convert.FromWei(transferEvent.Event.Value);
+        //    var subscription = new EthLogsObservableSubscription(_webSocketClient);
 
-                    _logger.LogInformation("Incoming {Token} Transfer: {Amount} from {From}", token.Name, amount, transferEvent.Event.From);
+        //    var safeObservable = subscription.GetSubscriptionDataResponsesAsObservable()
+        //        .Where(log => tokenAddresses.Contains(log.Address.ToLower()))
+        //        .Select(log => Observable.FromAsync(() => ProcessIncomingTransferLogAsync(log)))
+        //        .Concat();
 
-                    await _inventoryService.SyncInventoryQuantityAsync(token.Name.ToUpper());
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error processing incoming token transfer");
-            }
-        }
+        //    _incomingTransferSubscription = safeObservable.Subscribe(
+        //        _ => { },
+        //        async ex =>
+        //        {
+        //            _logger.LogError(ex, "Error in incoming transfer subscription. Reconnecting...");
+        //            await TryConnectWithRetryAsync(cancellationToken);
+        //        },
+        //        () =>
+        //        {
+        //            _logger.LogWarning("Incoming transfer subscription completed unexpectedly. Reconnecting...");
+        //            _ = Task.Run(async () => await TryConnectWithRetryAsync(cancellationToken));
+        //        });
+
+        //    var filter = new NewFilterInput
+        //    {
+        //        Address = tokenAddresses.Concat(new[] { _settings.ContractAddress }).ToArray()
+        //    };
+
+        //    await subscription.SubscribeAsync(filter);
+        //}
+
+        //private async Task ProcessIncomingTransferLogAsync(FilterLog log)
+        //{
+        //    try
+        //    {
+        //        var transferEvent = log.DecodeEvent<TransferEventDTO>();
+        //        if (transferEvent != null && transferEvent.Event.To.IsTheSameAddress(_settings.ContractAddress))
+        //        {
+        //            var token = _availableTokensSettings.FirstOrDefault(t => t.Address.IsTheSameAddress(log.Address));
+        //            var amount = Web3.Convert.FromWei(transferEvent.Event.Value);
+
+        //            _logger.LogInformation("Incoming {Token} Transfer: {Amount} from {From}", token.Name, amount, transferEvent.Event.From);
+
+        //            await _inventoryService.SyncInventoryQuantityAsync(token.Name.ToUpper());
+        //        }
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        _logger.LogError(ex, "Error processing incoming token transfer");
+        //    }
+        //}
 
         private async Task LogOrderExecutedEvent(EventLog<OrderExecutedEventDTO> eventLog, FilterLog log)
         {
