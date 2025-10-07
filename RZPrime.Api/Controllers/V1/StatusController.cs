@@ -30,6 +30,8 @@ namespace RZPrime.Api.Controllers.V1
         public bool SystemHealth { get; set; } = true; 
         public bool SystemActivity { get; set; } = true;
         public string ActivityMessage { get; set; } = "All services is active.";
-        public string Message { get; set; } = "Please Use Web app For actions";  
-    } 
+        public string Message { get; set; } = "Use the RZ Prime web application to apply changes or complete transactions.";
+
+        //To apply changes or complete transactions, please connect your wallet via WalletConnect in Settings.
+    }
 }
