@@ -13,8 +13,8 @@ namespace RZPrime.Services._User.DTOs.Results
 
         public decimal MinimumBuyAmount { get; set; }
         public decimal MaximumBuyAmount { get; set; }
-        public int MaximumPayOfMonth { get; set; } 
-    }
+        public int MaximumPayOfMonth { get; set; }
+    } 
 
      
 } 

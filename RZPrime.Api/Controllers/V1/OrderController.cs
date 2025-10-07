@@ -18,7 +18,7 @@ namespace RZPrime.Api.Controllers.V1
     {
 
         [HttpPost("[action]")]
-        [Authorize]
+        [Authorize(RequireActiveUser = false)]
         [CustomRateLimit(maxAttemptsCount: 60)]
         [SwaggerOperation(Summary = "Get all orders for user", Tags = ["Order"])]
         public async Task<OrderListResult> GetAllUserOrders([FromBody] GetAllUserOrdersUpdate update)
@@ -40,22 +40,23 @@ namespace RZPrime.Api.Controllers.V1
         [HttpPost("[action]")]
         [CustomRateLimit(maxAttemptsCount: 30)]
         [Authorize]
+
         [SwaggerOperation(Summary = "Drop order", Tags = ["Order"])]
         public async Task<OrderResult> DropOrderAsync(DropOrderUpdate update)
         {
             return await _orderService.DropOrderAsync(update, PublicKey, WalletAddress);
         }
 
+       
 
-        [HttpPost("[action]")]
-        [Authorize]
-        [ActiveUserOnly]
-        [CustomRateLimit(maxAttemptsCount: 5)]
-        [SwaggerOperation(Summary = "sync single order with blockchain, just for non paid orders", Tags = ["Order"])]
-        public async Task<bool> SyncSingleOrderAsync(OrderIdUpdate update)
-        {
-            return await _orderService.SyncSingleOrderAsync(update,PublicKey,WalletAddress);
-        }
+        //[HttpPost("[action]")]
+        //[Authorize]
+        //[CustomRateLimit(maxAttemptsCount: 5)]
+        //[SwaggerOperation(Summary = "sync single order with blockchain, just for non paid orders", Tags = ["Order"])]
+        //public async Task<bool> SyncSingleOrderAsync(OrderIdUpdate update)
+        //{
+        //    return await _orderService.SyncSingleOrderAsync(update,PublicKey,WalletAddress);
+        //}
 
 
     }
