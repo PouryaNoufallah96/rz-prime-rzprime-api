@@ -222,10 +222,10 @@ namespace RZPrime.Services._Order
             }
 
             var totalCount = await query
-                .CountAsync(x => x.UserPublicKey == userPublicKey && x.WalletAddress == walletAddress);
+                .CountAsync(x =>/* x.UserPublicKey == userPublicKey &&*/ x.WalletAddress == walletAddress);
 
             var orders = await query
-                .Where(x => x.UserPublicKey == userPublicKey && x.WalletAddress == walletAddress)
+                .Where(x =>/* x.UserPublicKey == userPublicKey &&*/ x.WalletAddress == walletAddress)
                 .OrderByDescending(x => x.CreatedMoment)
                 .Skip(skip)
                 .Take(pagination.Size)
@@ -250,7 +250,7 @@ namespace RZPrime.Services._Order
                     TokenEffectivePrice = order.TokenEffectivePrice,
                     TokenName = order.TokenName,
                     TokenNetwork = order.TokenNetwork,
-                    UserPublicKey = userPublicKey,
+                    //UserPublicKey = userPublicKey,
                     UserStageId = order.UserStageId,
                     PayAmountInWei = order.PayAmountInWei,
                     TokenAmountInWei = order.TokenAmountInWei,
