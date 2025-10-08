@@ -70,7 +70,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             {
                 try
                 {
-                   
+
                     await TryConnectWithRetryAsync(stoppingToken);
                     _lastEventReceived = DateTime.UtcNow;
 
@@ -166,20 +166,20 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
         {
             _logger.LogInformation("...........ConnectAndSubscribe touched............");
 
-           
-           await CleanupConnection();
+
+            await CleanupConnection();
 
             var currestWsUrl = GetCurrentWsUrl();
             _webSocketClient = new StreamingWebSocketClient(currestWsUrl);
 
             _web3 = new Web3(currestWsUrl);
 
-            
+
             try
             {
                 await _webSocketClient.StartAsync();
 
-              
+
                 await SubscribeToContractEventsAsync(cancellationToken);
 
                 //// Subscribe to incoming transfers
@@ -197,7 +197,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                 throw;
             }
         }
-       
+
         private string GetCurrentWsUrl()
         {
             var wss = _useSecondaryWsUrl ? _settings.WsUrl2 : _settings.WsUrl;
@@ -226,7 +226,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                         if (_webSocketClient.IsStarted)
                         {
                             await _webSocketClient.StopAsync();
-                            await Task.Delay(300); 
+                            await Task.Delay(300);
                         }
                     }
                     catch (Exception ex)
@@ -595,7 +595,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             }
         }
 
-       
+
 
 
 
