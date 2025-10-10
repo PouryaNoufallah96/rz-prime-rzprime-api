@@ -335,17 +335,19 @@ namespace RZPrime.Services._User
         public async Task<List<GetUserStatsResult>> GetUserStatsAsync(string userPublicKey, string walletAddress)
         {
 
-            if (userPublicKey == "GuestUser")
-            {
-                return GetUserStatsForGuestUserAsync(userPublicKey, walletAddress);
-            }
+           
 
 
             var result = new List<GetUserStatsResult>();
 
-            var stages = await _userStageService.GetUserStagesByWalletAddressForInternalUsage(walletAddress, userPublicKey);
+            var stages = await _userStageService.GetUserStagesByWalletAddressForInternalUsage(walletAddress);
 
-            var registeredOrders = await GetUserRegisteredOrderForEachStageAsync(userPublicKey, walletAddress);
+            if (userPublicKey == "GuestUser" && stages.Count < 1)
+            {
+                return GetUserStatsForGuestUserAsync(userPublicKey, walletAddress);
+            }
+
+            var registeredOrders = await GetUserRegisteredOrderForEachStageAsync(walletAddress);
 
             foreach (var stage in stages)
             {
@@ -382,6 +384,7 @@ namespace RZPrime.Services._User
 
         private List<GetUserStatsResult> GetUserStatsForGuestUserAsync(string userPublicKey, string walletAddress)
         {
+
             var ValidatedWalletAddress = ValidateAndConvertToChecksumAddress(walletAddress);
             return new List<GetUserStatsResult>
             {
@@ -729,11 +732,10 @@ namespace RZPrime.Services._User
         /// <param name="walletAddress"></param>
         /// <returns></returns>
         private async Task<Dictionary<string, decimal>> GetUserRegisteredOrderForEachStageAsync(
-              string userPublicKey,
               string walletAddress)
         {
             var groupedResults = await _orderRepository.AsQueryable()
-                .Where(q => q.UserPublicKey == userPublicKey && q.WalletAddress == walletAddress)
+                .Where(q => q.WalletAddress == walletAddress)
                 .Where(q => q.State == OrderState.Registered)
                 .GroupBy(q => q.UserStageId)
                 .Select(g => new

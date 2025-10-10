@@ -25,10 +25,10 @@ namespace RZPrime.Services._UserStage
         /// <param name="publicKey"></param>
         /// <returns></returns>
         /// <exception cref="NotFoundException"></exception>
-        public async Task<List<UserStage>> GetUserStagesByWalletAddressForInternalUsage(string walletAddress, string publicKey)
+        public async Task<List<UserStage>> GetUserStagesByWalletAddressForInternalUsage(string walletAddress)
         {
             var result = await _userStageRepository.AsQueryable()
-                .Where(q => q.WalletAddress == walletAddress && q.UserPublicKey == publicKey).ToListAsync();
+                .Where(q => q.WalletAddress == walletAddress).ToListAsync();
 
             if (result == null || result.Count < 1) throw new NotFoundException("User Stages not found!");
             return result;
