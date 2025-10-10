@@ -160,7 +160,7 @@ namespace RZPrime.Services._Order
             && q.State == OrderState.Registered)
                 ?? throw new NotFoundException("Order not found!");
 
-            var userStages = await _userStageService.GetUserStagesByWalletAddressForInternalUsage(walletAddress, userPublicKey);
+            var userStages = await _userStageService.GetUserStagesByWalletAddressForInternalUsage(walletAddress);
             var selectedStage = userStages.FirstOrDefault(q => q.Stage == order.Stage) ?? throw new NotFoundException("user stage not found!");
             if (selectedStage.AvailableDrop <= 0) throw new BadRequestException("No available drops left for this stage.");
 
@@ -545,7 +545,7 @@ namespace RZPrime.Services._Order
                 throw new BadRequestException($"Max of Payoff month is {stageSetting.MaximumPayOffMonth} in {stage.ToDisplay()} stage");
 
 
-            var userStages = await _userStageService.GetUserStagesByWalletAddressForInternalUsage(walletAddress, publicKey);
+            var userStages = await _userStageService.GetUserStagesByWalletAddressForInternalUsage(walletAddress);
             var userStageType = userStages.FirstOrDefault(q => q.Stage == update.SelectedStage)
                 ?? throw new BadRequestException($"The {stage.ToDisplay()} stage is not active for user!");
 
