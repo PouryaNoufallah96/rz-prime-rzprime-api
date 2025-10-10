@@ -1,29 +1,30 @@
-﻿using RZPrime.Domain.Collections;
-using RZPrime.Domain.Repositories.Contracts;
-using RZPrime.Services._Order.DTOs.Updates;
-using RZPrime.Services._UserStage;
-using MongoDB.Driver.Linq;
-using RZPrime.Services._UserStage.DTOs.Settings;
-using static RZPrime.Utilities.Constants.RegisterMode;
-using RZPrime.Services._Price;
-using RZPrime.Services._Price.DTOs.Settings;
-using RZPrime.Services._Order.DTOs.Results;
+﻿using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
+using MongoDB.Driver.Linq;
+using Nethereum.RPC.Eth.DTOs;
+using Nethereum.Web3;
+using Org.BouncyCastle.Asn1.X509;
+using RZPrime.Domain.Collections;
+using RZPrime.Domain.Repositories.Contracts;
 using RZPrime.Services._BlockChain;
+using RZPrime.Services._BlockChainWebSocket.DTOs;
 using RZPrime.Services._Inventory;
-using System.Numerics;
+using RZPrime.Services._Order.DTOs.Results;
+using RZPrime.Services._Order.DTOs.Updates;
+using RZPrime.Services._PancakeSwap;
+using RZPrime.Services._Price;
+using RZPrime.Services._Price.DTOs.Results;
+using RZPrime.Services._Price.DTOs.Settings;
+using RZPrime.Services._TransactionLog;
+using RZPrime.Services._TransactionLog.DTOs;
+using RZPrime.Services._UserStage;
+using RZPrime.Services._UserStage.DTOs.Settings;
+using RZPrime.Utilities.Exceptions.Common;
 using RZPrime.Utilities.Extension;
 using RZPrime.Utilities.Utilities;
-using RZPrime.Utilities.Exceptions.Common;
-using RZPrime.Services._PancakeSwap;
-using RZPrime.Services._Price.DTOs.Results;
-using Microsoft.AspNetCore.SignalR;
-using Nethereum.RPC.Eth.DTOs;
-using RZPrime.Services._BlockChainWebSocket.DTOs;
-using RZPrime.Services._TransactionLog.DTOs;
-using RZPrime.Services._TransactionLog;
-using Nethereum.Web3;
-using Microsoft.Extensions.Logging;
+using System.Numerics;
+using static RZPrime.Utilities.Constants.RegisterMode;
 
 namespace RZPrime.Services._Order
 {
@@ -106,6 +107,8 @@ namespace RZPrime.Services._Order
                 await _orderRepository.InsertOneAsync(newOrder);
                 await _inventoryService.SyncInventoryQuantityAsync(newOrder.TokenName);
 
+                await _hubContext.Clients.Group(newOrder.WalletAddress).SendAsync("NotifyPaidOrder", $"Successfully Register {newOrder.TokenName} Order.");
+
                 return new SubmitOrderResponseResult
                 {
                     Success = true,
@@ -169,6 +172,8 @@ namespace RZPrime.Services._Order
 
             await _inventoryService.SyncInventoryQuantityAsync(order.TokenName);
             await _userStageService.IncreaseDropCountAsync(selectedStage);
+
+            await _hubContext.Clients.Group(order.WalletAddress).SendAsync("NotifyPaidOrder", "Successfully Drop Order.");
 
             return new OrderResult
             {
