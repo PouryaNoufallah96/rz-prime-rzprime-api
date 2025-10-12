@@ -5,7 +5,7 @@ namespace RZPrime.Services._UserStage
     public interface IUserStageService
     {
         Task<string> InitializeUserStageAsync(string walletAddress, string userPublicKey);
-        Task<List<UserStage>> GetUserStagesByWalletAddressForInternalUsage(string walletAddress, string publicKey);
+        Task<List<UserStage>> GetUserStagesByWalletAddressForInternalUsage(string walletAddress);
         Task IncreaseDropCountAsync(UserStage stage);
         public (decimal, decimal) GetMinAndMaxBuyAmountWithStage(string walletAddress, UserStageType UserStageType);
 

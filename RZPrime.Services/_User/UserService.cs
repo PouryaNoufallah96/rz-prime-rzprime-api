@@ -162,7 +162,8 @@ namespace RZPrime.Services._User
                 _userAuthStorage.RemoveItem(nonce);
                 throw new BadRequestException("nonce expired!");
             }
-            if (!await CheckExistingWalletInDatabaseAsync(update.WalletAddress, update.Marker))
+           
+            if (!await MarkerCheckWithWalletAddressForActivateAsync(update.WalletAddress, update.Marker))
             {
                 throw new NotFoundException("Please register with your phone!");
             }
@@ -184,7 +185,7 @@ namespace RZPrime.Services._User
                 _userAuthStorage.RemoveItem(nonce);
                 throw new BadRequestException("nonce expired!");
             }
-            if (!await CheckExistingWalletInDatabaseAsync(update.WalletAddress, update.Marker))
+            if (!await MarkerCheckWithWalletAddressForActivateAsync(update.WalletAddress, update.Marker))
             {
                 throw new NotFoundException("Please register with your phone!");
             }
@@ -196,6 +197,26 @@ namespace RZPrime.Services._User
             return true;
         }
 
+
+        private async Task<bool> MarkerCheckWithWalletAddressForActivateAsync(string walletAddress, string deviceId)
+        {
+            
+            var walletWithMarker = await _userRepository.AsQueryable()
+                .Where(q =>  q.Devices.Any(q => q.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase))).FirstOrDefaultAsync();
+
+            if (walletWithMarker == null)
+            {
+               await CreateUserInActivateAsync(walletAddress, deviceId);
+                return true;
+            }
+            else
+            {
+                if (walletWithMarker.WalletAddress.ToLower() != walletAddress.ToLower()) throw new BadRequestException("Mismatch between marker and wallet.");
+                
+                return true;
+            }
+
+        }
 
 
         private bool IsExclusiveWallets(string walletAdress)
@@ -209,7 +230,7 @@ namespace RZPrime.Services._User
                 "0xD05Ac51B1113da21E22A595612767e7C3F6B0F00",
                 "0x798457be80878b1f132e3A516b4b44E197CE3076",
                 "0x55304995141dc954d7cb8bA77302b16fe7d629A4",
-                "0x960A2C024b2546d0389eB7e9d753721f1fAF6d15"
+                //"0x960A2C024b2546d0389eB7e9d753721f1fAF6d15"
             };
 
             if (exclusiveWallets.Contains(walletAdress))
@@ -220,17 +241,17 @@ namespace RZPrime.Services._User
             return false;
         }
 
-        private async Task<bool> CheckExistingWalletInDatabaseAsync(string walletAddress, string deviceId)
-        {
-            return await _userRepository.
-                ExistsAsync(q => q.WalletAddress.Equals(walletAddress, StringComparison.CurrentCultureIgnoreCase)
-            && q.Devices.Any(q => q.DeviceId.Equals(deviceId, StringComparison.CurrentCultureIgnoreCase)));
-        }
+        //private async Task<bool> CheckExistingWalletInDatabaseAsync(string walletAddress, string deviceId)
+        //{
+        //    return await _userRepository.
+        //        ExistsAsync(q => q.WalletAddress.Equals(walletAddress, StringComparison.OrdinalIgnoreCase)
+        //    && q.Devices.Any(q => q.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase)));
+        //}
 
         private async Task SyncMobileAuthRequestAsync(string deviceId, string walletAddress)
         {
             var usersWithSameDeviceId = await _userRepository.AsQueryable()
-                .Where(q => q.Devices.Any(q => q.DeviceId.Equals(deviceId, StringComparison.CurrentCultureIgnoreCase))).ToListAsync();
+                .Where(q => q.Devices.Any(q => q.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase))).ToListAsync();
 
             if (usersWithSameDeviceId.Count > 1)
             {
@@ -314,17 +335,19 @@ namespace RZPrime.Services._User
         public async Task<List<GetUserStatsResult>> GetUserStatsAsync(string userPublicKey, string walletAddress)
         {
 
-            if (userPublicKey == "GuestUser")
-            {
-                return GetUserStatsForGuestUserAsync(userPublicKey, walletAddress);
-            }
+           
 
 
             var result = new List<GetUserStatsResult>();
 
-            var stages = await _userStageService.GetUserStagesByWalletAddressForInternalUsage(walletAddress, userPublicKey);
+            var stages = await _userStageService.GetUserStagesByWalletAddressForInternalUsage(walletAddress);
 
-            var registeredOrders = await GetUserRegisteredOrderForEachStageAsync(userPublicKey, walletAddress);
+            if (userPublicKey == "GuestUser" && stages.Count < 1)
+            {
+                return GetUserStatsForGuestUserAsync(userPublicKey, walletAddress);
+            }
+
+            var registeredOrders = await GetUserRegisteredOrderForEachStageAsync(walletAddress);
 
             foreach (var stage in stages)
             {
@@ -361,6 +384,7 @@ namespace RZPrime.Services._User
 
         private List<GetUserStatsResult> GetUserStatsForGuestUserAsync(string userPublicKey, string walletAddress)
         {
+
             var ValidatedWalletAddress = ValidateAndConvertToChecksumAddress(walletAddress);
             return new List<GetUserStatsResult>
             {
@@ -515,6 +539,55 @@ namespace RZPrime.Services._User
             }
         }
 
+        private async Task<Domain.Collections.User> CreateUserInActivateAsync(string walletAddress, string deviceId)
+        {
+
+            if (deviceId.IsNullOrEmpty()) throw new BadRequestException("Marker is invalid!");
+            walletAddress = walletAddress.Trim();
+
+            var user = await _userRepository.FindOneAsync(q => q.WalletAddress.Equals(walletAddress, StringComparison.OrdinalIgnoreCase));
+
+            if (user == null)
+            {                
+                var newUser = new Domain.Collections.User
+                {
+                    WalletAddress = walletAddress,
+                    Role = UserRole.Customer,
+                    Permissions = [],
+                    UserName = null,
+                    Status = UserStatus.Active,
+                    PasswordHash = null,
+                    LoginDates = [],
+                    Devices = [new DeviceData {
+                        DeviceId = deviceId,
+                    }]
+                };
+
+                await _userRepository.InsertOneAsync(newUser);
+                await _userStageService.InitializeUserStageAsync(walletAddress, newUser.UserPublicKey);
+
+                return newUser;
+            }
+            else
+            {
+                if (user.Devices.Any(q => q.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase)))
+                {                   
+                    return user;
+                }
+                else
+                {
+
+                    user.Devices.Add(new DeviceData
+                    {
+                        DeviceId = deviceId
+                    });
+
+                    await _userRepository.ReplaceOneAsync(user);
+                    return user;
+                }
+            }
+
+        }
 
 
         /// <summary>
@@ -532,7 +605,7 @@ namespace RZPrime.Services._User
             walletAddress = walletAddress.Trim();
 
             var userWithDeviceId = await _userRepository.AsQueryable()
-                .Where(q => q.Devices.Any(q => q.DeviceId.Equals(deviceId, StringComparison.CurrentCultureIgnoreCase))).ToListAsync();
+                .Where(q => q.Devices.Any(q => q.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase))).ToListAsync();
 
             if (userWithDeviceId.Count > 1)
             {
@@ -540,7 +613,8 @@ namespace RZPrime.Services._User
             }
 
 
-            var user = await _userRepository.FindOneAsync(q => q.WalletAddress.Equals(walletAddress, StringComparison.CurrentCultureIgnoreCase));
+            var user = await _userRepository.FindOneAsync(q => q.WalletAddress.Equals(walletAddress, StringComparison.OrdinalIgnoreCase));
+
             if (user == null)
             {
                 if (userWithDeviceId != null && userWithDeviceId.Count > 0)
@@ -568,7 +642,7 @@ namespace RZPrime.Services._User
             }
             else
             {
-                if (user.Devices.Any(q => q.DeviceId.Equals(deviceId, StringComparison.CurrentCultureIgnoreCase)))
+                if (user.Devices.Any(q => q.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase)))
                 {
                     AddLoginDateToUser(user);
                     await _userRepository.ReplaceOneAsync(user);
@@ -658,11 +732,10 @@ namespace RZPrime.Services._User
         /// <param name="walletAddress"></param>
         /// <returns></returns>
         private async Task<Dictionary<string, decimal>> GetUserRegisteredOrderForEachStageAsync(
-              string userPublicKey,
               string walletAddress)
         {
             var groupedResults = await _orderRepository.AsQueryable()
-                .Where(q => q.UserPublicKey == userPublicKey && q.WalletAddress == walletAddress)
+                .Where(q => q.WalletAddress == walletAddress)
                 .Where(q => q.State == OrderState.Registered)
                 .GroupBy(q => q.UserStageId)
                 .Select(g => new
