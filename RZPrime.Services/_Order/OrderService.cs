@@ -383,36 +383,69 @@ namespace RZPrime.Services._Order
         /// this method use for send drop request to blockchain
         /// </summary>
         /// <returns></returns>
+        //public async Task SignDropsAsync()
+        //{
+        //    var dropsForSign = await _orderRepository.AsQueryable()
+        //        .Where(q => q.State == OrderState.Drop
+        //        && q.DropSignature != null 
+        //        && q.DropTransactionHash == null 
+        //        &&  q.CreatedMoment > new DateTime(2025, 9, 29)).ToListAsync();
+
+        //    if (dropsForSign.Count > 0)
+        //    {
+        //        var txHash = await _blockChainService.SignDropOnBlockChainAsync(dropsForSign);
+
+        //        if (!string.IsNullOrEmpty(txHash))
+        //        {
+        //            var orderIds = dropsForSign.Select(q => q.OrderId).ToList();
+
+        //            var filter = Builders<Order>.Filter.In(o => o.OrderId, orderIds);
+        //            var update = Builders<Order>.Update.Set(o => o.DropTransactionHash, txHash);
+
+        //            var result = await _orderRepository.UpdateManyAsync(filter, update);
+        //            if (result != null && result.ModifiedCount > 0)
+        //            {
+        //                _logger.LogInformation("Updated {ModifiedCount} orders with DropTransactionHash {TxHash}.",
+        //                    result.ModifiedCount, txHash);
+        //            }                                      
+        //        }
+        //    }
+        //}
+
         public async Task SignDropsAsync()
         {
             var dropsForSign = await _orderRepository.AsQueryable()
                 .Where(q => q.State == OrderState.Drop
-                && q.DropSignature != null 
-                && q.DropTransactionHash == null 
-                &&  q.CreatedMoment > new DateTime(2025, 9, 29)).ToListAsync();
+                         && q.DropSignature != null
+                         && q.DropTransactionHash == null
+                         && q.CreatedMoment > new DateTime(2025, 9, 29))
+                .ToListAsync();
 
             if (dropsForSign.Count > 0)
             {
-                var txHash = await _blockChainService.SignDropOnBlockChainAsync(dropsForSign);
+                var chunks = dropsForSign.Chunk(10);
 
-                if (!string.IsNullOrEmpty(txHash))
+                foreach (var chunk in chunks)
                 {
-                    var orderIds = dropsForSign.Select(q => q.OrderId).ToList();
+                    var txHash = await _blockChainService.SignDropOnBlockChainAsync(chunk.ToList());
 
-                    var filter = Builders<Order>.Filter.In(o => o.OrderId, orderIds);
-                    var update = Builders<Order>.Update.Set(o => o.DropTransactionHash, txHash);
-
-                    var result = await _orderRepository.UpdateManyAsync(filter, update);
-                    if (result != null && result.ModifiedCount > 0)
+                    if (!string.IsNullOrEmpty(txHash))
                     {
-                        _logger.LogInformation("Updated {ModifiedCount} orders with DropTransactionHash {TxHash}.",
-                            result.ModifiedCount, txHash);
-                    }                                      
+                        var orderIds = chunk.Select(q => q.OrderId).ToList();
+
+                        var filter = Builders<Order>.Filter.In(o => o.OrderId, orderIds);
+                        var update = Builders<Order>.Update.Set(o => o.DropTransactionHash, txHash);
+
+                        var result = await _orderRepository.UpdateManyAsync(filter, update);
+                        if (result != null && result.ModifiedCount > 0)
+                        {
+                            _logger.LogInformation("Updated {ModifiedCount} orders with DropTransactionHash {TxHash}.",
+                                result.ModifiedCount, txHash);
+                        }
+                    }
                 }
             }
         }
-
-
 
 
 
