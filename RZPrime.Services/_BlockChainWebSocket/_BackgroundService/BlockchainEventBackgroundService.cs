@@ -35,6 +35,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
         private readonly SemaphoreSlim _cleanupLock = new(1, 1);
         private bool _isDisposed = false;
         private int _reconnectAttempts = 0;
+        private bool _isCleaningUp = false;
         private IDisposable _transactionSubscription;
         private IDisposable _contractEventsSubscription;
         private IDisposable _incomingTransferSubscription;
@@ -209,6 +210,9 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
 
         private async Task CleanupConnection()
         {
+            if (_isCleaningUp) return;
+            _isCleaningUp = true;
+
             await _cleanupLock.WaitAsync();
             try
             {
@@ -226,7 +230,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                         if (_webSocketClient.IsStarted)
                         {
                             await _webSocketClient.StopAsync();
-                            await Task.Delay(300); 
+                            await Task.Delay(300);
                         }
                     }
                     catch (Exception ex)
@@ -236,7 +240,18 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
 
                     try
                     {
-                        _webSocketClient.Dispose();
+                        
+                        await Task.Run(() =>
+                        {
+                            try
+                            {
+                                _webSocketClient.Dispose();
+                            }
+                            catch (SemaphoreFullException ex)
+                            {
+                                _logger.LogWarning(ex, "Ignoring SemaphoreFullException from WebSocket.Dispose()");
+                            }
+                        });
                     }
                     catch (Exception ex)
                     {
@@ -254,6 +269,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             }
             finally
             {
+                _isCleaningUp = false;
                 _cleanupLock.Release();
             }
         }
