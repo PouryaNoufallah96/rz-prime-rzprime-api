@@ -18,9 +18,9 @@ namespace RZPrime.Utilities.Middlewares
                 }
                 catch 
                 {
-                    //throw new UnauthorizedAccessException("Please Login again !");
-                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                    await context.Response.WriteAsync("Please login again !");
+                    throw new UnauthorizedAccessException("Please Login again !");
+                    //context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                    //await context.Response.WriteAsync("Please login again !");
                 }
                 //var jwtToken = jwtService.Validate(token);
                 //context.Items["Token"] = jwtToken;
