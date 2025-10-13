@@ -230,6 +230,7 @@ namespace RZPrime.Services._User
                 "0xD05Ac51B1113da21E22A595612767e7C3F6B0F00",
                 "0x798457be80878b1f132e3A516b4b44E197CE3076",
                 "0x55304995141dc954d7cb8bA77302b16fe7d629A4",
+                "0xf3B97d7A9e0BCCa9912a575564d531cE2B6c0f6B"
                 //"0x960A2C024b2546d0389eB7e9d753721f1fAF6d15"
             };
 
