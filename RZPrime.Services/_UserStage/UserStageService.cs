@@ -35,6 +35,15 @@ namespace RZPrime.Services._UserStage
         }
 
 
+        public async Task<List<UserStage>> GetUserStagesByWalletAddressForInternalForPureWalletUsage(string walletAddress)
+        {
+            var result = await _userStageRepository.AsQueryable()
+                .Where(q => q.WalletAddress == walletAddress).ToListAsync();
+
+            return result;
+        }
+
+
         /// <summary>
         /// this methods use for increase drop count for user
         /// </summary>

@@ -336,12 +336,9 @@ namespace RZPrime.Services._User
         public async Task<List<GetUserStatsResult>> GetUserStatsAsync(string userPublicKey, string walletAddress)
         {
 
-           
-
-
             var result = new List<GetUserStatsResult>();
 
-            var stages = await _userStageService.GetUserStagesByWalletAddressForInternalUsage(walletAddress);
+            var stages = await _userStageService.GetUserStagesByWalletAddressForInternalForPureWalletUsage(walletAddress);
 
             if (userPublicKey == "GuestUser" && stages.Count < 1)
             {
