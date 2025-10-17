@@ -24,7 +24,7 @@ namespace RZPrime.Utilities.Filters
                 throw new BaseException(ApiResultStatusCode.Forbidden, "User status not found in token");
 
             if (statusClaim.Value != "Active")
-                throw new BaseException(ApiResultStatusCode.Forbidden, "Please sign with your wallet.");
+                throw new BaseException(ApiResultStatusCode.Forbidden, "Please connect your wallet in Settings to submit new orders, apply changes or complete transactions.");
         }
     }
 }
