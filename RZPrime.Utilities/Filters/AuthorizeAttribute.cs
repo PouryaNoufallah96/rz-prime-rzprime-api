@@ -37,7 +37,8 @@ namespace RZPrime.Utilities.Filters
                     .FirstOrDefault(c => c.Type == Claims.UserStatus.ToDisplay());
 
                 if (statusClaim == null || statusClaim.Value != "Active")
-                    throw new BaseException(ApiResultStatusCode.Forbidden, "Please connect your wallet in Settings to submit new orders, apply changes or complete transactions.");
+                    throw new BaseException(ApiResultStatusCode.Forbidden, "Please use the RZ Prime web application to submit new orders, apply changes or complete transactions.");
+                    //throw new BaseException(ApiResultStatusCode.Forbidden, "Please connect your wallet in Settings to submit new orders, apply changes or complete transactions.");
             }
 
         }
