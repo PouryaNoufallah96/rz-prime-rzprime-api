@@ -29,7 +29,7 @@ namespace RZPrime.Api.Controllers.V1
 
         [HttpPost("[action]")]
         [Authorize]
-        [CustomRateLimit(maxAttemptsCount:30)]
+        [CustomRateLimit(maxAttemptsCount:40)]
         [SwaggerOperation(Summary = "Submit order", Tags = ["Order"])]
         public async Task<SubmitOrderResponseResult> SubmitOrderAsync(SubmitOrderUpdate update)
         {
@@ -38,7 +38,7 @@ namespace RZPrime.Api.Controllers.V1
 
 
         [HttpPost("[action]")]
-        [CustomRateLimit(maxAttemptsCount: 30)]
+        [CustomRateLimit(maxAttemptsCount: 40)]
         [Authorize]
 
         [SwaggerOperation(Summary = "Drop order", Tags = ["Order"])]

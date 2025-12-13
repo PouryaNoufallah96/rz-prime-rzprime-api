@@ -1,6 +1,10 @@
-﻿using System.IdentityModel.Tokens.Jwt;
-using Microsoft.AspNetCore.Http;
+﻿using Microsoft.AspNetCore.Http;
+using Newtonsoft.Json;
+using RZPrime.Utilities.Enums;
 using RZPrime.Utilities.Extension;
+using RZPrime.Utilities.Models.Results;
+using System.IdentityModel.Tokens.Jwt;
+using System.Net;
 
 namespace RZPrime.Utilities.Extension
 {
@@ -32,6 +36,19 @@ namespace RZPrime.Utilities.Extension
             var token = context.HttpContext?.GetToken();
             if (token == null) return null;
             return token.GetClaim("UserId").Value;
+        }
+        public static async Task WriteToResponseAsync(this HttpContext context, string message,
+         HttpStatusCode httpStatusCode, ApiResultStatusCode apiStatusCode)
+        {
+            if (context.Response.HasStarted)
+                throw new InvalidOperationException("The response has already started, the http status code middleware will not be executed.");
+
+            var result = new ApiResult(false, apiStatusCode, message);
+            var json = JsonConvert.SerializeObject(result);
+
+            context.Response.StatusCode = (int)httpStatusCode;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync(json);
         }
 
         public static async Task<string> GetRequestBodyStringAsync(this HttpRequest request)

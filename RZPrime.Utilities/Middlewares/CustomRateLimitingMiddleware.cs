@@ -1,36 +1,87 @@
 ﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.Extensions.Caching.Memory;
-using RZPrime.Utilities.Extension;
 using RZPrime.Utilities.Attributes;
+using RZPrime.Utilities.Enums;
 using RZPrime.Utilities.Exceptions;
+using RZPrime.Utilities.Extension;
+using System.Collections.Concurrent;
+using System.Net;
 
 namespace RZPrime.Utilities.Middlewares
 {
     public class CustomRateLimitingMiddleware(RequestDelegate next, IMemoryCache cache)
     {
+        private static readonly ConcurrentDictionary<string, object> _locks = new();
+
         public async Task Invoke(HttpContext context)
         {
-            var rateLimitAttribute = context.GetEndpoint()?.Metadata.GetMetadata<CustomRateLimitAttribute>();
+            var endpoint = context.GetEndpoint();
+            var rateLimitAttr = endpoint?.Metadata.GetMetadata<CustomRateLimitAttribute>();
 
-            if (rateLimitAttribute != null)
+            if (rateLimitAttr == null)
             {
-                var identifier = context.GetClaim("Publickey") ?? context.GetRequestIpv4().Split(",")[0];
-                var cacheKey = $"{identifier}_login_attempts";
+                await next(context);
+                return;
+            }
 
-                if (cache.TryGetValue(cacheKey, out int attempts))
+            // Get endpoint and identifier info
+            var actionDescriptor = endpoint?.Metadata.GetMetadata<ControllerActionDescriptor>();
+            var endpointName = $"{actionDescriptor?.ControllerName ?? "Unknown"}.{actionDescriptor?.ActionName ?? "Unknown"}";
+            var identifier = context.GetClaim(Claims.WalletAddress.ToString()) ?? context.GetRequestIpv4() ?? "unknown";
+
+            var requestListKey = $"ratelimit_{identifier}_{endpointName}_timestamps";
+            var lockKey = $"ratelimit_{identifier}_{endpointName}_lock";
+
+            if (cache.TryGetValue(lockKey, out _))
+            {
+                context.Response.Headers.RetryAfter = (rateLimitAttr.LockoutDurationMinutes * 60).ToString();
+
+                await context.WriteToResponseAsync(rateLimitAttr.Message, HttpStatusCode.TooManyRequests, ApiResultStatusCode.TooManyRequests);
+                return;
+            }
+
+            var lockObject = _locks.GetOrAdd(requestListKey, k => new object());
+
+            lock (lockObject)
+            {
+                var now = DateTime.UtcNow;
+                var timestamps = cache.GetOrCreate(requestListKey, entry =>
                 {
-                    if (attempts >= rateLimitAttribute.MaxAttemptsCount)
-                    {
-                        throw new TooManyRequestsException(rateLimitAttribute.Message);
-                    }
+                    entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(rateLimitAttr.PeriodSeconds);
+                    return new ConcurrentQueue<DateTime>();
+                });
+
+                // Remove old timestamps (thread-safe within the lock)
+                while (timestamps.TryPeek(out var oldest) && oldest < now.AddSeconds(-rateLimitAttr.PeriodSeconds))
+                {
+                    timestamps.TryDequeue(out _);
                 }
 
-                attempts = cache.TryGetValue(cacheKey, out int existingAttempts) ? existingAttempts + 1 : 1;
-                var cacheEntryOptions = new MemoryCacheEntryOptions
+                if (timestamps.Count >= rateLimitAttr.MaxAttemptsCount)
                 {
-                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(rateLimitAttribute.LockoutDurationMinutes)
-                };
-                cache.Set(cacheKey, attempts, cacheEntryOptions);
+                    cache.Set(lockKey, true, TimeSpan.FromMinutes(rateLimitAttr.LockoutDurationMinutes));
+                    cache.Remove(requestListKey);
+
+                    context.Response.Headers.RetryAfter = (rateLimitAttr.LockoutDurationMinutes * 60).ToString();
+                    context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+                }
+                else
+                {
+                    timestamps.Enqueue(now);
+
+                    var resetTime = new DateTimeOffset(now.AddSeconds(rateLimitAttr.PeriodSeconds)).ToUnixTimeSeconds();
+                    context.Response.Headers["X-RateLimit-Limit"] = rateLimitAttr.MaxAttemptsCount.ToString();
+                    context.Response.Headers["X-RateLimit-Remaining"] = Math.Max(0, rateLimitAttr.MaxAttemptsCount - timestamps.Count).ToString();
+                    context.Response.Headers["X-RateLimit-Reset"] = resetTime.ToString();
+                }
+            }
+
+            if (context.Response.StatusCode == StatusCodes.Status429TooManyRequests)
+            {
+                throw new TooManyRequestsException(rateLimitAttr.Message);
+                //await context.WriteToResponseAsync(rateLimitAttr.Message, HttpStatusCode.TooManyRequests, ApiResultStatusCode.TooManyRequests);
+                //return;
             }
 
             await next(context);

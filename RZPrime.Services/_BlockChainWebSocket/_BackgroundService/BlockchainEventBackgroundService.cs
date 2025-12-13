@@ -348,6 +348,10 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                 {
                     _logger.LogInformation("OrderRegistered: {OrderId} by {User}",
                         orderRegistered.Event.OrderId, orderRegistered.Event.User);
+
+                    SentrySdk.CaptureMessage(
+                        $"OrderRegistered: {orderRegistered.Event.OrderId} by {orderRegistered.Event.User}"
+                    );
                     return;
                 }
 
@@ -356,6 +360,10 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                 {
                     _logger.LogInformation("OrderExecuted: {OrderId} by {User}",
                         orderExecuted.Event.OrderId, orderExecuted.Event.User);
+
+                    SentrySdk.CaptureMessage(
+                        $"OrderExecuted: {orderExecuted.Event.OrderId} by {orderExecuted.Event.User}"
+                    );
 
                     await LogOrderExecutedEvent(orderExecuted, log);
 
@@ -534,6 +542,10 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                 "Processing confirmed transaction: {TxHash} in block #{BlockNumber}...",
                 transaction.TransactionHash,
                 transaction.BlockNumber.Value);
+
+            SentrySdk.CaptureMessage(
+            $"Processing confirmed transaction: {transaction.TransactionHash} in block #{transaction.BlockNumber.Value}..."
+              );
 
             try
             {
