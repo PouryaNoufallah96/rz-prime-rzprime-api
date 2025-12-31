@@ -34,11 +34,12 @@ namespace RZPrime.Api.Utilities.Middlewares
 
             var headers = JsonSerializer.Serialize(context.Request.Headers.ToDictionary(h => h.Key, h => h.Value.ToString()));
             var query = context.Request.QueryString.HasValue ? context.Request.QueryString.Value : string.Empty;
+            var segments = context.Request.Path.HasValue ? context.Request.Path.Value.Split("/", StringSplitOptions.RemoveEmptyEntries) : null;
 
             var update = new RequestLogUpdate
             {
-                ControllerName = context.Request.Path.HasValue ? context.Request.Path.Value.Split("/")[3] : null,
-                ApiName = context.Request.Path.HasValue ? context.Request.Path.Value.Split("/")[4] : null,
+                ControllerName = (segments != null && segments.Length > 2) ? segments[2] : null,
+                ApiName = (segments != null && segments.Length > 3) ? segments[3] : null,
                 Body = body,
                 Headers = headers,
                 Query = string.IsNullOrWhiteSpace(query) ? null : query,
