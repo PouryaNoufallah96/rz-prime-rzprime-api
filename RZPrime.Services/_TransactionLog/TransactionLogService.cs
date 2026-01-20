@@ -329,7 +329,7 @@ namespace RZPrime.Services._TransactionLog
 
         public async Task<TransactionLog> GetOneTransactionLogWithOrderIdAndWalletAsync(string orderId, string walletAddress)
         {
-            var transactionLog = await _transactionLogRepository.FindOneAsync(q => q.OrderId == orderId && q.UserWallet == walletAddress) ??
+            var transactionLog = await _transactionLogRepository.FindOneAsync(q => q.OrderId == orderId && q.UserWallet.ToLower() == walletAddress.ToLower()) ??
                throw new NotFoundException("registered order not found!");
             return transactionLog;
         }

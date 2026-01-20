@@ -156,7 +156,7 @@ namespace RZPrime.Services._Order
         {
             var order = await _orderRepository.FindOneAsync(q => q.OrderId == update.OrderId
             && q.UserPublicKey == userPublicKey 
-            && q.WalletAddress == walletAddress
+            && q.WalletAddress.ToLower() == walletAddress.ToLower()
             && q.State == OrderState.Registered)
                 ?? throw new NotFoundException("Order not found!");
 
@@ -227,10 +227,10 @@ namespace RZPrime.Services._Order
             }
 
             var totalCount = await query
-                .CountAsync(x =>/* x.UserPublicKey == userPublicKey &&*/ x.WalletAddress == walletAddress);
+                .CountAsync(x =>/* x.UserPublicKey == userPublicKey &&*/ x.WalletAddress.ToLower() == walletAddress.ToLower());
 
             var orders = await query
-                .Where(x =>/* x.UserPublicKey == userPublicKey &&*/ x.WalletAddress == walletAddress)
+                .Where(x =>/* x.UserPublicKey == userPublicKey &&*/ x.WalletAddress.ToLower() == walletAddress.ToLower())
                 .OrderByDescending(x => x.CreatedMoment)
                 .Skip(skip)
                 .Take(pagination.Size)
