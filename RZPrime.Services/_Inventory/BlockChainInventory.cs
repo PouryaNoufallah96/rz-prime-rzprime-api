@@ -91,7 +91,7 @@ namespace RZPrime.Services._Inventory
 
             var sumOfOrder = await _orderRepository.AsQueryable()
                .Where(q => q.TokenName.Equals(tokenName, StringComparison.CurrentCultureIgnoreCase))
-               .Where(q => q.State == OrderState.Registered)
+               .Where(q => q.State == OrderState.Registered && q.DropSignature == null)
                .SumAsync(q => q.TokenAmount);
 
             var quantity = balance - sumOfOrder;
