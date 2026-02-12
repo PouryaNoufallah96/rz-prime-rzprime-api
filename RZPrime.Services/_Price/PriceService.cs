@@ -73,7 +73,7 @@ namespace RZPrime.Services._Price
                     _inventoryStorage.UpdatePrice(token.Name, priceData);
                 }
 
-                await Task.Delay(10000);
+                await Task.Delay(12000);
             }
         }
        
