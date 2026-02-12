@@ -183,7 +183,7 @@ namespace RZPrime.Services._Price
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error fetching token price gecko for {poolId}: {ex.Message}");
+                Console.WriteLine($"Error fetching token price gecko for {tokenName}: {ex.Message}");
                 return null;
             }
         }
