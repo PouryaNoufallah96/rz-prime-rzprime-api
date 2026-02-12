@@ -65,18 +65,18 @@ namespace RZPrime.Services._Price
 
         public async Task FetchAllPricesAsync()
         {
-            var tasks = _availableTokenDatas.Select(async token =>
+            foreach (var token in _availableTokenDatas)
             {
                 var priceData = await FetchTokenPriceAsync(token.Name);
                 if (priceData != null)
                 {
                     _inventoryStorage.UpdatePrice(token.Name, priceData);
                 }
-            });
 
-            await Task.WhenAll(tasks);
+                await Task.Delay(5000);
+            }
         }
-
+       
         public async Task<Dictionary<string, PriceResult>> FetchAllPricesForInternalUsageAsync()
         {
             var result = new ConcurrentDictionary<string, PriceResult>();
