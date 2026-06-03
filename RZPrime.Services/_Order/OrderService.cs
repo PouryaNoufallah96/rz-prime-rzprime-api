@@ -4,7 +4,6 @@ using MongoDB.Driver;
 using MongoDB.Driver.Linq;
 using Nethereum.RPC.Eth.DTOs;
 using Nethereum.Web3;
-using Org.BouncyCastle.Asn1.X509;
 using RZPrime.Domain.Collections;
 using RZPrime.Domain.Repositories.Contracts;
 using RZPrime.Services._BlockChain;
