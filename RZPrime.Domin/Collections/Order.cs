@@ -47,8 +47,9 @@ namespace RZPrime.Domain.Collections
     {
         public DateTime CreateMoment { get; set; }
         public string Hash { get; set; }
-        public TransactionStatus Status { get; set; }  
-    }
+        public TransactionStatus Status { get; set; }
+        public decimal PayAmountInRZUSD { get; set; }
+    } 
 
     public enum OrderState { Registered, Drop, Paid }
 

@@ -140,8 +140,6 @@ namespace RZPrime.Services._Order
         }
 
 
-
-
         /// <summary>
         /// this method use for drop a single order 
         /// after drop sync inventory
@@ -260,9 +258,9 @@ namespace RZPrime.Services._Order
                 UserStageId = order.UserStageId,
 
                 // convert to rzusd
-                PayAmountInWei = _blockChainService
+                PayAmountInWei = order.State == OrderState.Registered? _blockChainService
                     .ConvertToWei(order.FinalAmount / rzusdPrice)
-                    .ToString(),
+                    .ToString() : order.PayAmountInWei,
 
                 TokenAmountInWei = order.TokenAmountInWei,
                 TransactionsMetaData = order.TransactionsMetaData,
@@ -276,75 +274,6 @@ namespace RZPrime.Services._Order
                 TotalCount = totalCount,
                 PageCount = pageCount
             };
-        }
-
-
-
-        /// <summary>
-        /// for sync lost orders , when web socket did not sync order data , should use this method manually on order
-        /// </summary>
-        /// <param name="update"></param>
-        /// <param name="publicKey"></param>
-        /// <param name="userWallet"></param>
-        /// <returns></returns>
-        /// <exception cref="BadRequestException"></exception>
-        /// <exception cref="BaseException"></exception>
-        public async Task<bool> SyncSingleOrderAsync(OrderIdUpdate update, string publicKey, string userWallet)
-        {
-
-            try
-            {
-                var order = await GetOneOrderAsyncForInternalUsageAsync(publicKey, update.OrderId);
-                if (order.State == OrderState.Paid) throw new BadRequestException("Can not sync Paid Order!");
-
-                var transactionLog = await _transactionLogService.GetOneTransactionLogWithOrderIdAndWalletAsync(update.OrderId, userWallet);
-
-                var ExecuteTransactionLog = transactionLog.Histories.FirstOrDefault(q => q.Status == TransactionStatus.Pending
-                && q.EventType == BlockchainEventType.OrderExecuted && q.Hash != null);
-
-
-                if (ExecuteTransactionLog != null &&
-                    transactionLog.Histories.Any(q => q.Hash == ExecuteTransactionLog.Hash &&
-                    q.EventType == BlockchainEventType.TransactionConfirmed) &&
-                    order.State != OrderState.Paid)
-                {
-                    var filter = Builders<Order>.Filter.Eq(o => o.OrderId, order.OrderId);
-                    var now = DateTime.UtcNow;
-                    var txHash = ExecuteTransactionLog.Hash;
-                    var newMetaData = new OrderTransactionMeta
-                    {
-                        CreateMoment = now,
-                        Hash = txHash,
-                        Status = TransactionStatus.Confirmed
-                    };
-
-                    var updateQuert = Builders<Order>.Update
-                        .Set(o => o.State, OrderState.Paid)
-                        .Set(o => o.ChangeStateMoment, now)
-                        .Push(o => o.TransactionsMetaData, newMetaData);
-
-
-                    var updatedOrder = await _orderRepository.FindOneAndUpdateWithOptionAsync(filter, updateQuert);
-                    var shortHash = txHash.Length > 10 ? txHash[..10] : txHash;
-                    await _hubContext.Clients.Group(order.WalletAddress).SendAsync("NotifyPaidOrder", $"Transaction {shortHash}... is completed successfully");
-                    return true;
-                }
-
-                var lastTransactionLog = transactionLog.Histories.OrderByDescending(q => q.CreateMoment).FirstOrDefault();
-                var lastBlock = lastTransactionLog != null ? lastTransactionLog.BlockNumber : 58952272;
-                var syncData = await _blockChainService.SyncExecutedOrderWithOrderIdAsync(userWallet, order.OrderId, lastBlock);
-
-                if (syncData == null) throw new BadRequestException("There is no execute action on blockChain for this order");
-
-                await SyncWithBlockChainDataAsync(transactionLog, syncData.Value);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"error in sync error: {ex.Message}");
-                throw new BaseException("Can not sync order , Please try later!");
-            }
-
         }
 
 
@@ -454,101 +383,7 @@ namespace RZPrime.Services._Order
 
 
 
-        /// <summary>
-        /// for find single order of user with publicKey and orderId
-        /// </summary>
-        /// <param name="publicKey"></param>
-        /// <param name="orderId"></param>
-        /// <returns></returns>
-        /// <exception cref="NotFoundException"></exception>
-        private async Task<Order> GetOneOrderAsyncForInternalUsageAsync(string publicKey, string orderId)
-        {
-
-            var order = await _orderRepository.FindOneAsync(q => q.OrderId == orderId && q.UserPublicKey == publicKey) ??
-                throw new NotFoundException("Order not found!");
-            return order;
-        }
-
-
         #region PRIVATE METHODS
-
-        private async Task SyncWithBlockChainDataAsync(TransactionLog transactionLog, (OrderExecutedEventDTO Event, FilterLog log, TransactionReceipt? transaction) bcData)
-        {
-            var existsHash = transactionLog.Histories.Select(q => q.Hash).ToList();
-
-             
-
-            try
-            {
-                var txHash = bcData.log.TransactionHash;
-                var orderId = bcData.Event.OrderId;
-                var executeEventPendingExisting = transactionLog.Histories.FirstOrDefault(q => q.EventType == BlockchainEventType.OrderExecuted && q.Status == TransactionStatus.Pending && q.Hash == txHash);
-
-
-                //process pending execute
-                if (executeEventPendingExisting == null)
-                {
-                    var newtransactionLog = new ExecutedTxLog
-                    {
-                        OrderId = bcData.Event.OrderId,
-                        ExecuteData = new()
-                        {
-                            Hash = bcData.log.TransactionHash,
-                            From = bcData.log.Address,
-                            To = bcData.Event.User,
-                            Status = TransactionStatus.Pending,
-                            BlockNumber = (long)bcData.log.BlockNumber.Value,
-                            EventType = BlockchainEventType.OrderExecuted,
-                            Amount = Web3.Convert.FromWei(bcData.Event.PayAmount),
-                        }
-                    };
-                    await _transactionLogService.CreateOrderExecutedTransactionLogAsync(newtransactionLog);
-                }
-
-
-                var executeEventConfirmExisting = transactionLog.Histories.FirstOrDefault(q => q.EventType == BlockchainEventType.TransactionConfirmed && q.Status == TransactionStatus.Confirmed && q.Hash == txHash);
-                if (executeEventConfirmExisting == null)
-                {
-                    if (bcData.transaction == null)
-                    {
-                       return; // when is null that means that does not mint on BlockChain                         
-                    }
-                    if (bcData.transaction.Status.Value == 1)
-                    {
-                        var log = new ConfirmTxLog
-                        {
-                            OrderId = orderId,
-                            ConfirmData =
-                           new()
-                           {
-                               From = bcData.transaction.From,
-                               To = bcData.transaction.To,
-                               Hash = bcData.transaction.TransactionHash,
-                               BlockNumber = (long)bcData.transaction.BlockNumber.Value,
-                               Status = TransactionStatus.Confirmed,
-                               EventType = BlockchainEventType.TransactionConfirmed
-                           }
-
-                        };
-                        await _transactionLogService.CreateOrderConfirmedTransactionLogAsync(log);
-                    }
-                    else
-                    {
-                        //TODO : Handle failed
-                    }
-
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"error in sync blockchain error: {ex.Message}");
-
-                throw new BaseException("Can not sync order , Please try later!");
-            }
-
-
-
-        }
 
 
         /// <summary>
@@ -770,3 +605,169 @@ namespace RZPrime.Services._Order
 //    var newNumber = lastNumber + 1;
 //    return $"ORD{newNumber:D6}";
 //}
+
+
+
+//private async Task SyncWithBlockChainDataAsync(TransactionLog transactionLog, (OrderExecutedEventDTO Event, FilterLog log, TransactionReceipt? transaction) bcData)
+//{
+//    var existsHash = transactionLog.Histories.Select(q => q.Hash).ToList();
+
+
+
+//    try
+//    {
+//        var txHash = bcData.log.TransactionHash;
+//        var orderId = bcData.Event.OrderId;
+//        var executeEventPendingExisting = transactionLog.Histories.FirstOrDefault(q => q.EventType == BlockchainEventType.OrderExecuted && q.Status == TransactionStatus.Pending && q.Hash == txHash);
+
+
+//        //process pending execute
+//        if (executeEventPendingExisting == null)
+//        {
+//            var newtransactionLog = new ExecutedTxLog
+//            {
+//                OrderId = bcData.Event.OrderId,
+//                ExecuteData = new()
+//                {
+//                    Hash = bcData.log.TransactionHash,
+//                    From = bcData.log.Address,
+//                    To = bcData.Event.User,
+//                    Status = TransactionStatus.Pending,
+//                    BlockNumber = (long)bcData.log.BlockNumber.Value,
+//                    EventType = BlockchainEventType.OrderExecuted,
+//                    Amount = Web3.Convert.FromWei(bcData.Event.PayAmount),
+//                }
+//            };
+//            await _transactionLogService.CreateOrderExecutedTransactionLogAsync(newtransactionLog);
+//        }
+
+
+//        var executeEventConfirmExisting = transactionLog.Histories.FirstOrDefault(q => q.EventType == BlockchainEventType.TransactionConfirmed && q.Status == TransactionStatus.Confirmed && q.Hash == txHash);
+//        if (executeEventConfirmExisting == null)
+//        {
+//            if (bcData.transaction == null)
+//            {
+//               return; // when is null that means that does not mint on BlockChain                         
+//            }
+//            if (bcData.transaction.Status.Value == 1)
+//            {
+//                var log = new ConfirmTxLog
+//                {
+//                    OrderId = orderId,
+//                    ConfirmData =
+//                   new()
+//                   {
+//                       From = bcData.transaction.From,
+//                       To = bcData.transaction.To,
+//                       Hash = bcData.transaction.TransactionHash,
+//                       BlockNumber = (long)bcData.transaction.BlockNumber.Value,
+//                       Status = TransactionStatus.Confirmed,
+//                       EventType = BlockchainEventType.TransactionConfirmed
+//                   }
+
+//                };
+//                await _transactionLogService.CreateOrderConfirmedTransactionLogAsync(log);
+//            }
+//            else
+//            {
+//                //TODO : Handle failed
+//            }
+
+//        }
+//    }
+//    catch (Exception ex)
+//    {
+//        _logger.LogError($"error in sync blockchain error: {ex.Message}");
+
+//        throw new BaseException("Can not sync order , Please try later!");
+//    }
+
+
+
+//}
+
+
+///// <summary>
+///// for sync lost orders , when web socket did not sync order data , should use this method manually on order
+///// </summary>
+///// <param name="update"></param>
+///// <param name="publicKey"></param>
+///// <param name="userWallet"></param>
+///// <returns></returns>
+///// <exception cref="BadRequestException"></exception>
+///// <exception cref="BaseException"></exception>
+//public async Task<bool> SyncSingleOrderAsync(OrderIdUpdate update, string publicKey, string userWallet)
+//{
+
+//    try
+//    {
+//        var order = await GetOneOrderAsyncForInternalUsageAsync(publicKey, update.OrderId);
+//        if (order.State == OrderState.Paid) throw new BadRequestException("Can not sync Paid Order!");
+
+//        var transactionLog = await _transactionLogService.GetOneTransactionLogWithOrderIdAndWalletAsync(update.OrderId, userWallet);
+
+//        var ExecuteTransactionLog = transactionLog.Histories.FirstOrDefault(q => q.Status == TransactionStatus.Pending
+//        && q.EventType == BlockchainEventType.OrderExecuted && q.Hash != null);
+
+
+//        if (ExecuteTransactionLog != null &&
+//            transactionLog.Histories.Any(q => q.Hash == ExecuteTransactionLog.Hash &&
+//            q.EventType == BlockchainEventType.TransactionConfirmed) &&
+//            order.State != OrderState.Paid)
+//        {
+//            var filter = Builders<Order>.Filter.Eq(o => o.OrderId, order.OrderId);
+//            var now = DateTime.UtcNow;
+//            var txHash = ExecuteTransactionLog.Hash;
+//            var newMetaData = new OrderTransactionMeta
+//            {
+//                CreateMoment = now,
+//                Hash = txHash,
+//                Status = TransactionStatus.Confirmed
+//            };
+
+//            var updateQuert = Builders<Order>.Update
+//                .Set(o => o.State, OrderState.Paid)
+//                .Set(o => o.ChangeStateMoment, now)
+//                .Push(o => o.TransactionsMetaData, newMetaData);
+
+
+//            var updatedOrder = await _orderRepository.FindOneAndUpdateWithOptionAsync(filter, updateQuert);
+//            var shortHash = txHash.Length > 10 ? txHash[..10] : txHash;
+//            await _hubContext.Clients.Group(order.WalletAddress).SendAsync("NotifyPaidOrder", $"Transaction {shortHash}... is completed successfully");
+//            return true;
+//        }
+
+//        var lastTransactionLog = transactionLog.Histories.OrderByDescending(q => q.CreateMoment).FirstOrDefault();
+//        var lastBlock = lastTransactionLog != null ? lastTransactionLog.BlockNumber : 58952272;
+//        var syncData = await _blockChainService.SyncExecutedOrderWithOrderIdAsync(userWallet, order.OrderId, lastBlock);
+
+//        if (syncData == null) throw new BadRequestException("There is no execute action on blockChain for this order");
+
+//        await SyncWithBlockChainDataAsync(transactionLog, syncData.Value);
+//        return true;
+//    }
+//    catch (Exception ex)
+//    {
+//        _logger.LogError($"error in sync error: {ex.Message}");
+//        throw new BaseException("Can not sync order , Please try later!");
+//    }
+
+//}
+
+
+
+///// <summary>
+///// for find single order of user with publicKey and orderId
+///// </summary>
+///// <param name="publicKey"></param>
+///// <param name="orderId"></param>
+///// <returns></returns>
+///// <exception cref="NotFoundException"></exception>
+//private async Task<Order> GetOneOrderAsyncForInternalUsageAsync(string publicKey, string orderId)
+//{
+
+//    var order = await _orderRepository.FindOneAsync(q => q.OrderId == orderId && q.UserPublicKey == publicKey) ??
+//        throw new NotFoundException("Order not found!");
+//    return order;
+//}
+

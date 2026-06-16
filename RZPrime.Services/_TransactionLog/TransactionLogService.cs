@@ -113,7 +113,8 @@ namespace RZPrime.Services._TransactionLog
                     {
                         CreateMoment = now,
                         Hash = txHash,
-                        Status = TransactionStatus.Confirmed
+                        Status = TransactionStatus.Confirmed,
+                        PayAmountInRZUSD = log.ExecuteData.Amount
                     };
 
                     var update = Builders<Order>.Update

@@ -9,7 +9,7 @@ namespace RZPrime.Services._Order
         Task<OrderListResult> GetAllUserOrdersAsync(GetAllUserOrdersUpdate update, string userPublicKey, string walletAddress);
         Task<OrderResult> DropOrderAsync(DropOrderUpdate update, string userPublicKey, string walletAddress);
         Task FindOrderToMakeDropAsync();
-        Task<bool> SyncSingleOrderAsync(OrderIdUpdate update, string publicKey, string userWallet);
+        //Task<bool> SyncSingleOrderAsync(OrderIdUpdate update, string publicKey, string userWallet);
         Task SignDropsAsync();
     }
 }
