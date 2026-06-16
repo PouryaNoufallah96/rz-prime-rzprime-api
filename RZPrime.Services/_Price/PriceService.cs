@@ -1,9 +1,12 @@
 ﻿using Microsoft.AspNetCore.DataProtection.KeyManagement;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging;
+using Nethereum.Contracts.Standards.ERC20.TokenList;
+using Newtonsoft.Json.Linq;
 using RZPrime.Services._Inventory.DTOs.Storages;
 using RZPrime.Services._Price.DTOs.Results;
 using RZPrime.Services._Price.DTOs.Settings;
+using RZPrime.Services._Price.DTOs.Storages;
 using RZPrime.Utilities.Exceptions.Common;
 using System.Collections.Concurrent;
 using System.Text.Json;
@@ -15,20 +18,21 @@ namespace RZPrime.Services._Price
         AvailableTokensSettings _availableTokenDatas,
         CallPriceSettings _callPriceSettings,
        ILogger<PriceService> logger,
+       RZUSDPriceStorage _rZUSDPriceStorage,
         InventoryStorage _inventoryStorage) : IPriceService, ISingletonDependency
     {
         private static readonly HttpClient _httpClient = new HttpClient();
         private readonly ILogger<PriceService> _logger = logger;
         private decimal _cachedBnbPrice = 300m;
         private DateTime _lastBnbPriceUpdate = DateTime.MinValue;
-
+        private readonly SemaphoreSlim _priceLock = new(1, 1);
 
 
         public async Task<PriceResult> FetchTokenPriceAsync(string tokenName)
         {
             try
             {
-               return await FetchTokenPriceFromGeckoTerminalAsync(tokenName);
+                return await FetchTokenPriceFromGeckoTerminalAsync(tokenName);
             }
             catch (Exception ex)
             {
@@ -70,7 +74,7 @@ namespace RZPrime.Services._Price
                 var id = token.CMCID.ToString();
 
                 if (!data.TryGetProperty(id, out var tokenData))
-                    return null ;
+                    return null;
 
                 var quote = tokenData
                     .GetProperty("quote")
@@ -79,7 +83,7 @@ namespace RZPrime.Services._Price
                 decimal price = quote.GetProperty("price").GetDecimal();
                 //decimal change24h = quote.GetProperty("percent_change_24h").GetDecimal();
 
-                var result =new PriceResult
+                var result = new PriceResult
                 {
                     TokenName = token.Name,
                     TokenNetwork = token.Network,
@@ -96,11 +100,73 @@ namespace RZPrime.Services._Price
             }
         }
 
+
+        public async Task<decimal> GetRZUSDPriceAsync()
+        {
+            if (
+                _rZUSDPriceStorage.Price > 0 &&
+                DateTime.UtcNow - _rZUSDPriceStorage.LastUpdate < TimeSpan.FromMinutes(5)
+            )
+            {
+                return _rZUSDPriceStorage.Price;
+            }
+
+            await _priceLock.WaitAsync();
+
+            try
+            {
+                if (
+                    _rZUSDPriceStorage.Price > 0 &&
+                    DateTime.UtcNow - _rZUSDPriceStorage.LastUpdate < TimeSpan.FromMinutes(5)
+                )
+                {
+                    return _rZUSDPriceStorage.Price;
+                }
+
+                var result = await FetchRZUSDPriceAsync();
+
+                if (result?.Price <= 0)
+                    throw new BadRequestException();
+
+                _rZUSDPriceStorage.Price = result.Price;
+                _rZUSDPriceStorage.LastUpdate = DateTime.UtcNow;
+
+                return result.Price;
+            }
+            finally
+            {
+                _priceLock.Release();
+            }
+        }
+
+        public async Task<PriceResult> FetchRZUSDPriceAsync()
+        {
+            var tokenName = "RZUSD";
+            PriceResult result = null;
+            try
+            {
+                result = await FetchTokenPriceFromGeckoTerminalAsync(tokenName);
+            }
+            catch (Exception ex)
+            {
+                //Console.WriteLine($"Error fetching price in RZ for {tokenName.ToUpper()}: {ex.Message}");
+                result = await FetchTokenPriceFromCoinMarketCapAsync(tokenName);
+            }
+
+            _rZUSDPriceStorage.Price = result.Price;
+            _rZUSDPriceStorage.LastUpdate = DateTime.UtcNow;
+            return result;
+        }
+
         public async Task FetchAllPricesAsync()
         {
+
+            await FetchRZUSDPriceAsync();
+
             foreach (var token in _availableTokenDatas)
             {
                 var priceData = await FetchTokenPriceAsync(token.Name);
+
                 if (priceData != null && token.SyncPrice)
                 {
                     _inventoryStorage.UpdatePrice(token.Name, priceData);
@@ -109,6 +175,7 @@ namespace RZPrime.Services._Price
                 await Task.Delay(12000);
             }
         }
+
 
         public async Task<Dictionary<string, PriceResult>> FetchAllPricesForInternalUsageAsync()
         {

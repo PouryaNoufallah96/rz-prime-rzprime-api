@@ -213,9 +213,7 @@ namespace RZPrime.Services._Order
         /// <returns></returns>
         public async Task<OrderListResult> GetAllUserOrdersAsync(GetAllUserOrdersUpdate update, string userPublicKey, string walletAddress)
         {
-            var rzusdPriceData = await _priceService.FetchTokenPriceAsync("RZUSD");
-            if (rzusdPriceData == null) throw new BadRequestException("There is a problem in RZUSD price, try later.");
-            var rzusdPrice = rzusdPriceData?.Price ?? 1m;
+            var rzusdPrice = await _priceService.GetRZUSDPriceAsync();
 
             var pagination = update.Pagination;
 

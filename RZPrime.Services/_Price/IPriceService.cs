@@ -9,7 +9,7 @@ namespace RZPrime.Services._Price
         Task FetchAllPricesAsync();
         Task<Dictionary<string, PriceResult>> FetchAllPricesForInternalUsageAsync();
         Task<EffectivePriceResult> CalculateEffectivePriceAsync(string tokenName, decimal assetQuantity, decimal USDTAmount);
-
+        Task<decimal> GetRZUSDPriceAsync();
 
         //Task<EffectivePriceResult> CalculateEffectivePriceAsync(string tokenName ,decimal assetQuantity);
         //Task<EffectivePriceResult> CalculateEffectivePriceForLandingAsync(string tokenName, decimal assetQuantity);
