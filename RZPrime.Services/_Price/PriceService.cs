@@ -162,6 +162,7 @@ namespace RZPrime.Services._Price
         {
 
             await FetchRZUSDPriceAsync();
+            await Task.Delay(12000);
 
             foreach (var token in _availableTokenDatas)
             {
