@@ -26,40 +26,73 @@ namespace RZPrime.Services._Price
 
         public async Task<PriceResult> FetchTokenPriceAsync(string tokenName)
         {
-            string url = $"{_callPriceSettings.BaseUrl}/tokens/symbol/{tokenName.ToUpper()}/price";
-
             try
             {
-                using var request = new HttpRequestMessage(HttpMethod.Get, url);
-                request.Headers.Add("Authorization", _callPriceSettings.ApiKey); 
-                request.Headers.Add("Accept", "application/json");
+               return await FetchTokenPriceFromGeckoTerminalAsync(tokenName);
+            }
+            catch (Exception ex)
+            {
+                //Console.WriteLine($"Error fetching price in RZ for {tokenName.ToUpper()}: {ex.Message}");
+                return await FetchTokenPriceFromCoinMarketCapAsync(tokenName);
+            }
+        }
+
+
+        public async Task<PriceResult> FetchTokenPriceFromCoinMarketCapAsync(string tokenName)
+        {
+            try
+            {
+                var token = _availableTokenDatas
+                    .Where(t => t.SyncPrice && t.Name == tokenName.ToUpper())
+                    .FirstOrDefault();
+
+                if (token == null) return null;
+
+
+                string idQuery = string.Join(",", token.CMCID);
+
+                string url =
+                    $"https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/latest?id={idQuery}&convert=USD";
+
+                var request = new HttpRequestMessage(HttpMethod.Get, url);
+                //request.Headers.Add("X-CMC_PRO_API_KEY", _callPriceSettings.ApiKey);
+                request.Headers.Add("X-CMC_PRO_API_KEY", "606c8bf4afaf4adbac00a2186880f75a");
 
                 var response = await _httpClient.SendAsync(request);
                 response.EnsureSuccessStatusCode();
 
                 var jsonString = await response.Content.ReadAsStringAsync();
-                using JsonDocument doc = JsonDocument.Parse(jsonString);
 
-                var status = doc.RootElement.GetProperty("status").GetString();
-                if (status != "success")
-                    return null;
+                using JsonDocument doc = JsonDocument.Parse(jsonString);
 
                 var data = doc.RootElement.GetProperty("data");
 
-                decimal price = decimal.Parse(data.GetProperty("price").GetString()!);
-                string tokenSymbol = data.GetProperty("symbol").GetString()!;
+                var id = token.CMCID.ToString();
 
-                return new PriceResult
+                if (!data.TryGetProperty(id, out var tokenData))
+                    return null ;
+
+                var quote = tokenData
+                    .GetProperty("quote")
+                    .GetProperty("USD");
+
+                decimal price = quote.GetProperty("price").GetDecimal();
+                //decimal change24h = quote.GetProperty("percent_change_24h").GetDecimal();
+
+                var result =new PriceResult
                 {
-                    TokenName = tokenSymbol,
-                    Price = price,
-                    TokenNetwork = "BSC"
+                    TokenName = token.Name,
+                    TokenNetwork = token.Network,
+                    Price = Math.Round(price, token.PriceDecimalPlaces),
                 };
+
+
+                return result;
             }
             catch (Exception ex)
             {
-                //Console.WriteLine($"Error fetching price in RZ for {tokenName.ToUpper()}: {ex.Message}");
-                return await FetchTokenPriceFromGeckoTerminalAsync(tokenName);
+                _logger.LogError(ex, "Error syncing all prices");
+                return null;
             }
         }
 
@@ -68,7 +101,7 @@ namespace RZPrime.Services._Price
             foreach (var token in _availableTokenDatas)
             {
                 var priceData = await FetchTokenPriceAsync(token.Name);
-                if (priceData != null)
+                if (priceData != null && token.SyncPrice)
                 {
                     _inventoryStorage.UpdatePrice(token.Name, priceData);
                 }
@@ -76,7 +109,7 @@ namespace RZPrime.Services._Price
                 await Task.Delay(12000);
             }
         }
-       
+
         public async Task<Dictionary<string, PriceResult>> FetchAllPricesForInternalUsageAsync()
         {
             var result = new ConcurrentDictionary<string, PriceResult>();
@@ -95,7 +128,7 @@ namespace RZPrime.Services._Price
             return result.ToDictionary(kv => kv.Key, kv => kv.Value);
         }
 
-        public async Task<EffectivePriceResult> CalculateEffectivePriceAsync(string tokenName, decimal assetQuantity,decimal USDTAmount) 
+        public async Task<EffectivePriceResult> CalculateEffectivePriceAsync(string tokenName, decimal assetQuantity, decimal USDTAmount)
         {
             // Validate input parameters
             if (assetQuantity <= 0) throw new BadRequestException("Token quantity must be greater than zero.", nameof(assetQuantity));
@@ -120,10 +153,10 @@ namespace RZPrime.Services._Price
                 return new EffectivePriceResult
                 {
                     EffectivePrice = effectivePrice,
-                    Price = price ,
+                    Price = price,
                     Impact = priceImpact
                 };
-                               
+
             }
             catch (Exception ex)
             {

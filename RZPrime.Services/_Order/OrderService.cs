@@ -123,8 +123,8 @@ namespace RZPrime.Services._Order
                         PayOffDate = newOrder.PayOffDate.ToString("o"),
                         WalletAddress = newOrder.WalletAddress,
                         TokenAmountWei = BigInteger.Parse(newOrder.TokenAmountInWei),
-                        PayAmountInWei = BigInteger.Parse(newOrder.PayAmountInWei),
                         EndTimestamp = new DateTimeOffset(newOrder.PayOffDate).ToUnixTimeSeconds(),
+                        PayAmountInWei = BigInteger.Parse(newOrder.PayAmountInWei),
                         FinalAmount = newOrder.FinalAmount,
                     }
                 };
@@ -213,6 +213,9 @@ namespace RZPrime.Services._Order
         /// <returns></returns>
         public async Task<OrderListResult> GetAllUserOrdersAsync(GetAllUserOrdersUpdate update, string userPublicKey, string walletAddress)
         {
+            var rzusdPriceData = await _priceService.FetchTokenPriceAsync("RZUSD");
+            if (rzusdPriceData == null) throw new BadRequestException("There is a problem in RZUSD price, try later.");
+            var rzusdPrice = rzusdPriceData?.Price ?? 1m;
 
             var pagination = update.Pagination;
 
@@ -229,44 +232,49 @@ namespace RZPrime.Services._Order
                 .CountAsync(x =>/* x.UserPublicKey == userPublicKey &&*/ x.WalletAddress.ToLower() == walletAddress.ToLower());
 
             var orders = await query
-                .Where(x =>/* x.UserPublicKey == userPublicKey &&*/ x.WalletAddress.ToLower() == walletAddress.ToLower())
-                .OrderByDescending(x => x.CreatedMoment)
-                .Skip(skip)
-                .Take(pagination.Size)
-                .Select(order => new OrderResult
-                {
-                    CreatedMoment = order.CreatedMoment,
-                    ModifiedMoment = order.ModifiedMoment,
-                    OrderId = order.OrderId,
-                    State = order.State,
-                    WalletAddress = walletAddress,
-                    ChangeStateMoment = order.ChangeStateMoment,
-                    FinalAmount = order.FinalAmount,
-                    LoanAmount = order.LoanAmount,
-                    LoanInterestAmount = order.LoanInterestAmount,
-                    MonthDuration = order.MonthDuration,
-                    PayOffDate = order.PayOffDate,
-                    ProfitRatePerMonth = order.ProfitRatePerMonth,
-                    Promotion = order.Promotion,
-                    Quantity = order.TokenAmount,
-                    Stage = order.Stage,
-                    TokenAddress = order.TokenAddress,
-                    TokenEffectivePrice = order.TokenEffectivePrice,
-                    TokenName = order.TokenName,
-                    TokenNetwork = order.TokenNetwork,
-                    //UserPublicKey = userPublicKey,
-                    UserStageId = order.UserStageId,
-                    PayAmountInWei = order.PayAmountInWei,
-                    TokenAmountInWei = order.TokenAmountInWei,
-                    TransactionsMetaData = order.TransactionsMetaData,
-                })
-                .ToListAsync();
+             .Where(x => x.WalletAddress.ToLower() == walletAddress.ToLower())
+             .OrderByDescending(x => x.CreatedMoment)
+             .Skip(skip)
+             .Take(pagination.Size)
+             .ToListAsync();
+
+            var result = orders.Select(order => new OrderResult
+            {
+                CreatedMoment = order.CreatedMoment,
+                ModifiedMoment = order.ModifiedMoment,
+                OrderId = order.OrderId,
+                State = order.State,
+                WalletAddress = walletAddress,
+                ChangeStateMoment = order.ChangeStateMoment,
+                FinalAmount = order.FinalAmount,
+                LoanAmount = order.LoanAmount,
+                LoanInterestAmount = order.LoanInterestAmount,
+                MonthDuration = order.MonthDuration,
+                PayOffDate = order.PayOffDate,
+                ProfitRatePerMonth = order.ProfitRatePerMonth,
+                Promotion = order.Promotion,
+                Quantity = order.TokenAmount,
+                Stage = order.Stage,
+                TokenAddress = order.TokenAddress,
+                TokenEffectivePrice = order.TokenEffectivePrice,
+                TokenName = order.TokenName,
+                TokenNetwork = order.TokenNetwork,
+                UserStageId = order.UserStageId,
+
+                // convert to rzusd
+                PayAmountInWei = _blockChainService
+                    .ConvertToWei(order.FinalAmount / rzusdPrice)
+                    .ToString(),
+
+                TokenAmountInWei = order.TokenAmountInWei,
+                TransactionsMetaData = order.TransactionsMetaData,
+            }).ToList();
 
             var pageCount = (int)Math.Ceiling((double)totalCount / pagination.Size);
 
             return new OrderListResult
             {
-                Data = orders,
+                Data = result,
                 TotalCount = totalCount,
                 PageCount = pageCount
             };
