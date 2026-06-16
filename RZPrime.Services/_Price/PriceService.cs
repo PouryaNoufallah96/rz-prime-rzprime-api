@@ -47,7 +47,7 @@ namespace RZPrime.Services._Price
             try
             {
                 var token = _availableTokenDatas
-                    .Where(t => t.SyncPrice && t.Name == tokenName.ToUpper())
+                    .Where(t => t.Name == tokenName.ToUpper())
                     .FirstOrDefault();
 
                 if (token == null) return null;
