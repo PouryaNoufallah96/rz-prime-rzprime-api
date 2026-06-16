@@ -166,9 +166,11 @@ namespace RZPrime.Services._Price
 
             foreach (var token in _availableTokenDatas)
             {
+                if(!token.SyncPrice) continue;
+
                 var priceData = await FetchTokenPriceAsync(token.Name);
 
-                if (priceData != null && token.SyncPrice)
+                if (priceData != null)
                 {
                     _inventoryStorage.UpdatePrice(token.Name, priceData);
                 }
