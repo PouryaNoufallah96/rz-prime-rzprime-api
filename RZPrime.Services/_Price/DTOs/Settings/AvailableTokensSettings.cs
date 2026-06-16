@@ -21,7 +21,7 @@
         public string PoolName { get; set; }
         public int PriceDecimalPlaces { get; set; }
         public int AmountDecimalPlaces { get; set; }
-        public bool SyncPrice { get; set; } = true;
+        public bool SyncPrice { get; set; } 
         public long CMCID { get; set; }
     }
 

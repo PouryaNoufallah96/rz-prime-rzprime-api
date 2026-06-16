@@ -405,7 +405,7 @@ public class BlockChainService : IBlockChainService, ISingletonDependency
     {
         var balances = new Dictionary<string, decimal>();
         var contractAddress = _settings.ContractAddress;
-        var tokens = _availableTokenData;
+        var tokens = _availableTokenData.Where(q => q.SyncPrice);
         //var bnbBalance = await _web3.Eth.GetBalance.SendRequestAsync(contractAddress);
         //balances["BNB"] = UnitConversion.Convert.FromWei(bnbBalance);
 
