@@ -11,6 +11,7 @@ namespace RZPrime.Services._TransactionLog
         Task<TransactionListResult> ListTransactionsAsync(Pagination pagination, string walletAddress);
         Task CreateOrderRegisteredTransactionLogAsync(RegisteredTxLog log);
         Task CreateOrderExecutedTransactionLogAsync(ExecutedTxLog log);
+        Task CreateOrderExpiredTransactionLogAsync(ExpiredTxLog log);
         Task CreateOrderConfirmedTransactionLogAsync(ConfirmTxLog log);
         Task CreateOrderFailedTransactionLogAsync(FailTxLog log);
         Task<BigInteger> GetLastCheckedBlockNumberAsync();

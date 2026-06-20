@@ -293,8 +293,8 @@ namespace RZPrime.Services._Order
             if (orders != null && orders.Count > 0)
             {
                 var filter = Builders<Order>.Filter.And(
-            Builders<Order>.Filter.Eq(x => x.State, OrderState.Registered),
-            Builders<Order>.Filter.Lte(x => x.PayOffDate, now));
+                Builders<Order>.Filter.Eq(x => x.State, OrderState.Registered),
+                Builders<Order>.Filter.Lte(x => x.PayOffDate, now));
 
                 var update = Builders<Order>.Update
                   .Set(x => x.State, OrderState.Drop)

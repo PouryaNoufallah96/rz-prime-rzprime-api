@@ -369,6 +369,21 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
 
                     _lastProcessedBlock = BigInteger.Max(_lastProcessedBlock, log.BlockNumber.Value + 1);
                 }
+
+                var orderExpired = log.DecodeEvent<OrderExpiredEventDTO>();
+                if (orderExpired != null)
+                {
+                    _logger.LogInformation("OrderExpired: {OrderId} by {User}",
+                        orderExpired.Event.OrderId, orderExpired.Event.User);
+
+                    SentrySdk.CaptureMessage(
+                        $"OrderExpired: {orderExpired.Event.OrderId} by {orderExpired.Event.User}"
+                    );
+
+                    await LogOrderExpiredEvent(orderExpired, log);
+
+                    _lastProcessedBlock = BigInteger.Max(_lastProcessedBlock, log.BlockNumber.Value + 1);
+                }
             }
             catch (Exception ex)
             {
@@ -497,7 +512,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                     Status = TransactionStatus.Confirmed,
                     BlockNumber = (long)log.BlockNumber.Value,
                     EventType = BlockchainEventType.OrderExecuted,
-                    Amount = Web3.Convert.FromWei(eventLog.Event.PayAmount),
+                    Amount = Web3.Convert.FromWei(eventLog.Event.RzusdPaid),
                 }
             };
 
@@ -509,6 +524,34 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             await _transactionLogService.CreateOrderExecutedTransactionLogAsync(transactionLog);
             _lastEventReceived = DateTime.UtcNow;
             _logger.LogInformation("Logged OrderExecuted event for order {OrderId}", eventLog.Event.OrderId);
+        }
+
+        private async Task LogOrderExpiredEvent(EventLog<OrderExpiredEventDTO> eventLog, FilterLog log)
+        {
+
+            var block = (long)log.BlockNumber.Value;
+            var transactionLog = new ExpiredTxLog
+            {
+                OrderId = eventLog.Event.OrderId,
+                ExpiredData = new()
+                {
+                    Hash = log.TransactionHash,
+                    From = log.Address,
+                    To = eventLog.Event.User,
+                    Status = TransactionStatus.Confirmed,
+                    BlockNumber = (long)log.BlockNumber.Value,
+                    EventType = BlockchainEventType.OrderExpired,
+                }
+            };
+
+            //lock (_blockLock)
+            //{
+            //    _lastProcessedBlock = BigInteger.Max(_lastProcessedBlock, block);
+            //}
+
+            await _transactionLogService.CreateOrderExpiredTransactionLogAsync(transactionLog);
+            _lastEventReceived = DateTime.UtcNow;
+            _logger.LogInformation("Logged OrderExpired event for order {OrderId}", eventLog.Event.OrderId);
         }
 
         private async Task SubscribeToTransactionConfirmationsAsync()

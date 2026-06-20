@@ -289,6 +289,75 @@ namespace RZPrime.Services._TransactionLog
 
         }
 
+        public async Task CreateOrderExpiredTransactionLogAsync(ExpiredTxLog log)
+        {
+            try
+            {
+                var exlog = await _transactionLogRepository.FindOneAsync(q => q.OrderId == log.OrderId);
+                if (exlog != null)
+                {
+                    var txHash = log.ExpiredData.Hash;
+
+                    if (exlog.Histories.Select(q => q.Hash).Contains(txHash))
+                    {
+                        _logger.LogInformation($"Duplicated hash : {txHash}");
+                        return;
+                    }
+
+                    exlog.Histories.Add(log.ExpiredData);
+                    await _transactionLogRepository.ReplaceOneAsync(exlog);
+
+                    var now = DateTime.UtcNow;
+                    var filter = Builders<Order>.Filter.Eq(o => o.OrderId, log.OrderId);
+
+
+                    var newMetaData = new OrderTransactionMeta
+                    {
+                        CreateMoment = now,
+                        Hash = txHash,
+                        Status = TransactionStatus.Expired,
+                        PayAmountInRZUSD = 0
+                    };
+
+                    var update = Builders<Order>.Update
+                        .Set(o => o.State, OrderState.Drop)
+                        .Set(o => o.ChangeStateMoment, now)
+                        .Push(o => o.TransactionsMetaData, newMetaData);
+
+                    var updatedOrder = await _orderRepository.FindOneAndUpdateWithOptionAsync(filter, update);
+                    var order = updatedOrder ?? await GetOrderAsync(log.OrderId);
+
+                    try
+                    {
+
+                        var shortHash = txHash.Length > 10 ? txHash[..10] : txHash;
+                        await _hubContext.Clients.Group(order.WalletAddress).SendAsync("NotifyPaidOrder", $"Transaction {shortHash}... is expired");
+
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"error in sending hub execute order : {order.Id} -- message =>>> {ex.Message}");
+                    }
+                }
+                else
+                {
+                    var newLog = new TransactionLog
+                    {
+                        OrderId = log.OrderId,
+                        IsError = true,
+                        Histories = [log.ExpiredData]
+                    };
+                    await _transactionLogRepository.InsertOneAsync(newLog);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating transaction execute log");
+                throw;
+            }
+        }
+
+
         public async Task<IEnumerable<RZPrime.Domain.Collections.TransactionLog>> GetByOrderIdAsync(string orderId)
         {
             try
@@ -334,5 +403,6 @@ namespace RZPrime.Services._TransactionLog
                throw new NotFoundException("registered order not found!");
             return transactionLog;
         }
-    }
+
+          }
 }

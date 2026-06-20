@@ -7,6 +7,11 @@ namespace RZPrime.Services._TransactionLog.DTOs
         public string OrderId { get; set; }
         public TransactionLogHistory ExecuteData { get; set; }
     }
+    public class ExpiredTxLog
+    {
+        public string OrderId { get; set; }
+        public TransactionLogHistory ExpiredData { get; set; }
+    } 
 
 
     public class ConfirmTxLog

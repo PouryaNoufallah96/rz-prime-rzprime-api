@@ -20,6 +20,18 @@ namespace RZPrime.Services._BlockChainWebSocket.DTOs
     }
 
 
+
+    [Event("OrderExpired")]
+    public class OrderExpiredEventDTO : IEventDTO
+    {
+        [Parameter("address", "user", 1, false)]
+        public string User { get; set; }
+
+        [Parameter("string", "orderId", 2, false)]
+        public string OrderId { get; set; }
+    }
+
+
     [Event("OrderExecuted")]
     public class OrderExecutedEventDTO : IEventDTO
     {
@@ -29,16 +41,13 @@ namespace RZPrime.Services._BlockChainWebSocket.DTOs
         [Parameter("string", "orderId", 2, false)]
         public string OrderId { get; set; }
 
-        [Parameter("uint256", "payAmount", 3, false)]
-        public BigInteger PayAmount { get; set; }
+        [Parameter("uint256", "rzusdPaid", 3, false)]
+        public BigInteger RzusdPaid { get; set; }
+
+        [Parameter("uint256", "usdValue", 4, false)]
+        public BigInteger UsdValue { get; set; }
     }
 
-    [Function("executeOrder")]
-    public class ExecuteOrderFunction : FunctionMessage
-    {
-        [Parameter("string", "orderId", 1)]
-        public string OrderId { get; set; }
-    }
 
 
     [Event("Transfer")]
