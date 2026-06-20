@@ -346,7 +346,7 @@ public class BlockChainService : IBlockChainService, ISingletonDependency
                 Status = TransactionStatus.Pending,
                 BlockNumber = (long)log.BlockNumber.Value,
                 EventType = BlockchainEventType.OrderExecuted,
-                Amount = Web3.Convert.FromWei(eventLog.Event.PayAmount),
+                Amount = Web3.Convert.FromWei(eventLog.Event.RzusdPaid),
             }
         };
 
