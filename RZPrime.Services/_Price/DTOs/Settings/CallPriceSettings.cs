@@ -2,7 +2,7 @@
 {
     public class CallPriceSettings
     {
-        public string ApiKey { get; set; }
+        public string CMCApiKey { get; set; } 
         public string BaseUrl { get; set; }
     } 
 }

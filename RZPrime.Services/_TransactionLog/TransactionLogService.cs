@@ -1,15 +1,12 @@
 ﻿using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
+using MongoDB.Driver.Linq;
 using RZPrime.Domain.Collections;
 using RZPrime.Domain.Repositories;
 using RZPrime.Domain.Repositories.Contracts;
-using RZPrime.Services._TransactionLog.DTOs;
-using RZPrime.Services._TransactionLog.DTOs.Results;
-using RZPrime.Utilities.DTOs;
-using RZPrime.Utilities.Exceptions.Common;
+using RZPrime.Services._TransactionLog.DTOs.Updates;
 using System.Numerics;
-using MongoDB.Driver.Linq;
 using static RZPrime.Utilities.Constants.RegisterMode;
 
 namespace RZPrime.Services._TransactionLog
@@ -22,387 +19,208 @@ namespace RZPrime.Services._TransactionLog
         ILogger<TransactionLogRepository> _logger) : ITransactionLogService, IScopedDependency
     {
 
-        //public async Task CreateOrderRegisteredTransactionLogAsync(RegisteredTxLog log)
-        //{
-
-        //    try
-        //    {
-        //        var filter = Builders<TransactionLog>.Filter.Eq(x => x.OrderId, log.OrderId);
-        //        var update = Builders<TransactionLog>.Update
-        //            .SetOnInsert(x => x.TokenName, log.TokenName)
-        //            .SetOnInsert(x => x.OrderId, log.OrderId)
-        //            .SetOnInsert(x => x.TokenAmount, log.TokenAmount)
-        //            .SetOnInsert(x => x.USDTAmount, log.USDTAmount)
-        //            .SetOnInsert(x => x.UserWallet, log.UserWallet)
-        //            .SetOnInsert(x => x.Histories, new List<TransactionLogHistory>())
-        //            .AddToSet(x => x.Histories, log.RegisteredData);
-
-        //        await _transactionLogRepository.UpsertOneAsync(filter, update);
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        _logger.LogError(ex, "Error creating transaction log");
-        //        throw;
-        //    }
-
-        //}
-
-        public async Task CreateOrderRegisteredTransactionLogAsync(RegisteredTxLog log)
+       // do not need to log register,because backend register the order
+        public async Task CreateOrderRegisteredTransactionLogAsync(OrderRegisteredLogData log)
         {
-            //_logger.LogInformation($"order register orderId{transactionLog.OrderId} {DateTime.UtcNow}");
+            var existsLog = await _transactionLogRepository.AsQueryable()
+                    .Where(q =>
+                        q.Hash.ToLower() == log.Hash.ToLower() &&
+                        q.OrderId.ToLower() == log.OrderId.ToLower() &&
+                        q.EventType == BlockchainEventType.OrderRegistered)
+                    .FirstOrDefaultAsync();
 
-            try
+            if (existsLog != null)
             {
-                var exlog = await _transactionLogRepository.FindOneAsync(q => q.OrderId == log.OrderId);
-                if (exlog != null)
-                {
-                    if (exlog.Histories.Any(q => q.Hash == log.RegisteredData.Hash && q.Status == TransactionStatus.Confirmed))
-                    {
-                        exlog.UserWallet = log.UserWallet;
-                        exlog.TokenName = log.TokenName;
-                        exlog.TokenAmount = log.TokenAmount;
-                        exlog.USDTAmount = log.USDTAmount;
-                        await _transactionLogRepository.ReplaceOneAsync(exlog);
-                    }
-                }
-                else
-                {
-                    var newLog = new TransactionLog
-                    {
-                        TokenName = log.TokenName,
-                        OrderId = log.OrderId,
-                        TokenAmount = log.TokenAmount,
-                        USDTAmount = log.USDTAmount,
-                        UserWallet = log.UserWallet,
-                        Histories = [log.RegisteredData]
-                    };
-
-                    await _transactionLogRepository.InsertOneAsync(newLog);
-                }
+                _logger.LogWarning(
+                    "Duplicate OrderRegistered log detected for OrderId {OrderId}. Skipping insertion. Hash: {Hash}",
+                    log.OrderId, log.Hash);
+                return;
             }
-            catch (Exception ex)
+
+
+            var newLog = new TransactionLog
             {
-                _logger.LogError(ex, "Error creating transaction log");
-                throw;
-            }
-        }
+                Address = log.Address,
+                OrderId = log.OrderId,
+                UserWallet = log.UserWallet,
+                TokenName = "",
+                TokenAmount = log.TokenAmount.ToString(),
+                USDTAmount = "",
+                Hash = log.Hash,
+                BlockNumber = log.BlockNumber,
+                EventType = BlockchainEventType.OrderRegistered,
+                Status = TransactionStatus.Confirmed
+            };
 
-        public async Task CreateOrderExecutedTransactionLogAsync(ExecutedTxLog log)
-        {
-            try
-            {
-                var exlog = await _transactionLogRepository.FindOneAsync(q => q.OrderId == log.OrderId);
-                if (exlog != null)
-                {
-                    var txHash = log.ExecuteData.Hash;
-
-                    if (exlog.Histories.Select(q => q.Hash).Contains(txHash))
-                    {
-                        _logger.LogInformation($"Duplicated hash : {txHash}");
-                        return;
-                    }
-
-                    exlog.Histories.Add(log.ExecuteData);
-                    await _transactionLogRepository.ReplaceOneAsync(exlog);
-
-                    var now = DateTime.UtcNow;
-                    var filter = Builders<Order>.Filter.Eq(o => o.OrderId, log.OrderId);
-
-
-                    var newMetaData = new OrderTransactionMeta
-                    {
-                        CreateMoment = now,
-                        Hash = txHash,
-                        Status = TransactionStatus.Confirmed,
-                        PayAmountInRZUSD = log.ExecuteData.Amount
-                    };
-
-                    var update = Builders<Order>.Update
-                        .Set(o => o.State, OrderState.Paid)
-                        .Set(o => o.ChangeStateMoment, now)
-                        .Push(o => o.TransactionsMetaData, newMetaData);
-
-                    var updatedOrder = await _orderRepository.FindOneAndUpdateWithOptionAsync(filter, update);
-                    var order = updatedOrder ?? await GetOrderAsync(log.OrderId);
-
-                    try
-                    {
-
-                        var shortHash = txHash.Length > 10 ? txHash[..10] : txHash;
-                        await _hubContext.Clients.Group(order.WalletAddress).SendAsync("NotifyPaidOrder", $"Transaction {shortHash}... is completed successfully");
-
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError($"error in sending hub execute order : {order.Id} -- message =>>> {ex.Message}");
-                    }
-                }
-                else
-                {
-                    var newLog = new TransactionLog
-                    {
-                        OrderId = log.OrderId,
-                        IsError = true,
-                        Histories = [log.ExecuteData]
-                    };
-                    await _transactionLogRepository.InsertOneAsync(newLog);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error creating transaction execute log");
-                throw;
-            }
+            await _transactionLogRepository.InsertOneAsync(newLog);
 
         }
 
-        public async Task CreateOrderConfirmedTransactionLogAsync(ConfirmTxLog log)
+        public async Task CreateOrderExecutedTransactionLogAsync(OrderExecutedLogData log)
         {
-            try
+            var existsLog = await _transactionLogRepository.AsQueryable()
+                  .Where(q =>
+                      q.Hash.ToLower() == log.Hash.ToLower() &&
+                      q.OrderId.ToLower() == log.OrderId.ToLower() &&
+                      q.EventType == BlockchainEventType.OrderExecuted)
+                  .FirstOrDefaultAsync();
+
+            if (existsLog != null)
             {
-                var exlog = await _transactionLogRepository
-                    .FindOneAsync(q => q.OrderId == log.OrderId);
-
-                if (exlog != null)
-                {
-                    var txHash = log.ConfirmData.Hash;
-                    if (exlog.Histories.Select(q => q.Hash).Contains(txHash))
-                    {
-                        _logger.LogInformation($"Duplicated hash : {txHash}");
-                        return;
-                    }
-
-
-                    exlog.Histories.Add(log.ConfirmData);
-                    await _transactionLogRepository.ReplaceOneAsync(exlog);
-
-
-
-                    var now = DateTime.UtcNow;
-
-                    var newMetaData = new OrderTransactionMeta
-                    {
-                        CreateMoment = now,
-                        Hash = txHash,
-                        Status = TransactionStatus.Confirmed
-                    };
-
-                    var filter = Builders<Order>.Filter.And(
-                    Builders<Order>.Filter.Eq(o => o.Id, log.OrderId),
-                    Builders<Order>.Filter.Ne("TransactionsMetaData", newMetaData)
-                    );
-
-
-                    var update = Builders<Order>.Update
-                        .Set(o => o.State, OrderState.Paid)
-                        .Set(o => o.ChangeStateMoment, now)
-                        .Push(o => o.TransactionsMetaData, newMetaData);
-
-                    var updatedOrder = await _orderRepository.FindOneAndUpdateWithOptionAsync(filter, update);
-                    var order = updatedOrder ?? await GetOrderAsync(log.OrderId);
-
-                    try
-                    {
-
-                        var shortHash = txHash.Length > 10 ? txHash[..10] : txHash;
-                        await _hubContext.Clients.Group(order.WalletAddress).SendAsync("NotifyPaidOrder", $"Transaction {shortHash}... is completed successfully");
-
-
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError($"error in sending hub execute order : {order.Id} -- message =>>> {ex.Message}");
-                    }
-
-                }
-            }
-
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error creating transaction log");
-                throw;
+                _logger.LogWarning(
+                    "Duplicate OrderExecuted log detected for OrderId {OrderId}. Skipping insertion. Hash: {Hash}",
+                    log.OrderId, log.Hash);
+                return;
             }
 
 
-        }
+            var newLog = new TransactionLog
+            {
+                Address = log.Address,
+                OrderId = log.OrderId,
+                UserWallet = log.UserWallet,
+                TokenName = "RZUSD",
+                TokenAmount = log.RzusdPaid.ToString(),
+                USDTAmount = log.UsdValue.ToString(),
+                Hash = log.Hash,
+                BlockNumber = log.BlockNumber,
+                EventType = BlockchainEventType.OrderExecuted,
+                Status = TransactionStatus.Confirmed
+            };
 
-        public async Task CreateOrderFailedTransactionLogAsync(FailTxLog log)
-        {
+            await _transactionLogRepository.InsertOneAsync(newLog);
 
-            //_logger.LogInformation($"===================================================");
-            //_logger.LogInformation($"Order failed orderId{log.OrderId} {DateTime.UtcNow}");
+            var filter = Builders<Order>.Filter.Eq(o => o.OrderId, log.OrderId);
+
+            var txHash = log.Hash;
+            var rzusdAmount = ConvertFromWei(log.RzusdPaid);
+            var now = DateTime.UtcNow;
+
+            var newMetaData = new OrderTransactionMeta
+            {
+                CreateMoment = now,
+                Hash = log.Hash,
+                Status = TransactionStatus.Confirmed,
+                PayAmountInRZUSD = rzusdAmount
+            };
+
+            var update = Builders<Order>.Update
+                .Set(o => o.State, OrderState.Paid)
+                .Set(o => o.ChangeStateMoment, now)
+                .Push(o => o.TransactionsMetaData, newMetaData);
+
+            var updatedOrder = await _orderRepository.FindOneAndUpdateWithOptionAsync(filter, update);
+            var order = updatedOrder ?? await GetOrderAsync(log.OrderId);
 
             try
             {
-                var txHash = log.FailData.Hash;
-                var exlog = await _transactionLogRepository
-                    .FindOneAsync(q => q.OrderId == log.OrderId);
 
-                if (exlog != null)
-                {
-                    var isExecuteHhistory = exlog.Histories.Any(q => q.Hash != txHash);
+                var shortHash = txHash.Length > 10 ? txHash[..10] : txHash;
+                await _hubContext.Clients.Group(order.WalletAddress).SendAsync("NotifyPaidOrder", $"Transaction {shortHash}... is completed successfully");
 
-                    exlog.Histories.Add(log.FailData);
-                    await _transactionLogRepository.ReplaceOneAsync(exlog);
-
-                    if (isExecuteHhistory)
-                    {
-                        var now = DateTime.UtcNow;
-
-                        var filter = Builders<Order>.Filter.Eq(o => o.OrderId, log.OrderId);
-
-                        var newMetaData = new OrderTransactionMeta
-                        {
-                            CreateMoment = now,
-                            Hash = txHash,
-                            Status = TransactionStatus.Failed
-                        };
-
-                        var update = Builders<Order>.Update
-                            .Set(o => o.State, OrderState.Registered)
-                            .Set(o => o.ChangeStateMoment, now)
-                            .Push(o => o.TransactionsMetaData, newMetaData);
-
-                        var updatedOrder = await _orderRepository.FindOneAndUpdateWithOptionAsync(filter, update);
-                        var order = updatedOrder ?? await GetOrderAsync(log.OrderId);
-
-                        try
-                        {
-                            var shortHash = txHash.Length > 10 ? txHash[..10] : txHash;
-                            await _hubContext.Clients.Group(order.WalletAddress).SendAsync("NotifyPaidOrder", $"Transaction {shortHash}... is Failed");
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError($"error in sending hub confirmed message =>>> {ex.Message}");
-                        }
-
-                    }
-                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error creating transaction log for failed transaction - hash : {log.FailData.Hash}");
-                throw;
+                _logger.LogError($"error in sending hub execute order : {order.Id} -- message =>>> {ex.Message}");
             }
-
-
-
         }
 
-        public async Task CreateOrderExpiredTransactionLogAsync(ExpiredTxLog log)
+        public async Task CreateOrderExpiredTransactionLogAsync(OrderExpiredLogData log)
         {
+
+            var existsLog = await _transactionLogRepository.AsQueryable()
+                .Where(q =>
+                    q.Hash.ToLower() == log.Hash.ToLower() &&
+                    q.OrderId.ToLower() == log.OrderId.ToLower() &&
+                    q.EventType == BlockchainEventType.OrderExpired)
+                .FirstOrDefaultAsync();
+
+            if (existsLog != null)
+            {
+                _logger.LogWarning(
+                    "Duplicate OrderExpired log detected for OrderId {OrderId}. Skipping insertion. Hash: {Hash}",
+                    log.OrderId, log.Hash);
+                return;
+            }
+
+            var newLog = new TransactionLog
+            {
+                Address = log.Address,
+                OrderId = log.OrderId,
+                UserWallet = log.UserWallet,
+                TokenName = "RZUSD",
+                TokenAmount = "0",
+                USDTAmount ="0",
+                Hash = log.Hash,
+                BlockNumber = log.BlockNumber,
+                EventType = BlockchainEventType.OrderExpired,
+                Status = TransactionStatus.Confirmed
+            };
+
+            await _transactionLogRepository.InsertOneAsync(newLog);
+
+
+
+            var txHash = log.Hash;
+            var now = DateTime.UtcNow;
+            var filter = Builders<Order>.Filter.Eq(o => o.OrderId, log.OrderId);
+
+            var newMetaData = new OrderTransactionMeta
+            {
+                CreateMoment = now,
+                Hash = txHash,
+                Status = TransactionStatus.Expired,
+                PayAmountInRZUSD = 0
+            };
+
+            var update = Builders<Order>.Update
+                .Set(o => o.State, OrderState.Drop)
+                .Set(o => o.ChangeStateMoment, now)
+                .Push(o => o.TransactionsMetaData, newMetaData);
+
+            var updatedOrder = await _orderRepository.FindOneAndUpdateWithOptionAsync(filter, update);
+            var order = updatedOrder ?? await GetOrderAsync(log.OrderId);
             try
             {
-                var exlog = await _transactionLogRepository.FindOneAsync(q => q.OrderId == log.OrderId);
-                if (exlog != null)
-                {
-                    var txHash = log.ExpiredData.Hash;
 
-                    if (exlog.Histories.Select(q => q.Hash).Contains(txHash))
-                    {
-                        _logger.LogInformation($"Duplicated hash : {txHash}");
-                        return;
-                    }
+                var shortHash = txHash.Length > 10 ? txHash[..10] : txHash;
+                await _hubContext.Clients.Group(order.WalletAddress).SendAsync("NotifyPaidOrder", $"Transaction {shortHash}... is expired");
 
-                    exlog.Histories.Add(log.ExpiredData);
-                    await _transactionLogRepository.ReplaceOneAsync(exlog);
-
-                    var now = DateTime.UtcNow;
-                    var filter = Builders<Order>.Filter.Eq(o => o.OrderId, log.OrderId);
-
-
-                    var newMetaData = new OrderTransactionMeta
-                    {
-                        CreateMoment = now,
-                        Hash = txHash,
-                        Status = TransactionStatus.Expired,
-                        PayAmountInRZUSD = 0
-                    };
-
-                    var update = Builders<Order>.Update
-                        .Set(o => o.State, OrderState.Drop)
-                        .Set(o => o.ChangeStateMoment, now)
-                        .Push(o => o.TransactionsMetaData, newMetaData);
-
-                    var updatedOrder = await _orderRepository.FindOneAndUpdateWithOptionAsync(filter, update);
-                    var order = updatedOrder ?? await GetOrderAsync(log.OrderId);
-
-                    try
-                    {
-
-                        var shortHash = txHash.Length > 10 ? txHash[..10] : txHash;
-                        await _hubContext.Clients.Group(order.WalletAddress).SendAsync("NotifyPaidOrder", $"Transaction {shortHash}... is expired");
-
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError($"error in sending hub execute order : {order.Id} -- message =>>> {ex.Message}");
-                    }
-                }
-                else
-                {
-                    var newLog = new TransactionLog
-                    {
-                        OrderId = log.OrderId,
-                        IsError = true,
-                        Histories = [log.ExpiredData]
-                    };
-                    await _transactionLogRepository.InsertOneAsync(newLog);
-                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error creating transaction execute log");
-                throw;
+                _logger.LogError($"error in sending hub execute order : {order.Id} -- message =>>> {ex.Message}");
             }
-        }
-
-
-        public async Task<IEnumerable<RZPrime.Domain.Collections.TransactionLog>> GetByOrderIdAsync(string orderId)
-        {
-            try
-            {
-                return await _transactionLogRepository.FilterByAsync(
-                    x => x.OrderId == orderId);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting transactions by order ID");
-                throw;
-            }
-        }
-
-        public Task<TransactionListResult> ListTransactionsAsync(Pagination pagination, string walletAddress)
-        {
-            throw new NotImplementedException();
         }
 
         public async Task<BigInteger> GetLastCheckedBlockNumberAsync()
         {
             var lastBlock = await _transactionLogRepository
              .AsQueryable()
-             .SelectMany(t => t.Histories
-                 .Where(h => h.EventType == BlockchainEventType.OrderExecuted)
-                 .Select(h => h.BlockNumber))
+              .Where(q => q.EventType == BlockchainEventType.OrderRegistered)
              .OrderByDescending(b => b)
              .FirstOrDefaultAsync();
 
-            return new BigInteger(lastBlock);
-        }
+            if (lastBlock == null)
+            {
+                return new BigInteger(0);
+            }
 
+            return new BigInteger(lastBlock.BlockNumber);
+        }
 
         private async Task<Order> GetOrderAsync(string orderId)
         {
             var order = await _orderRepository.FindOneAsync(q => q.OrderId == orderId);
             return order;
         }
-
-        public async Task<TransactionLog> GetOneTransactionLogWithOrderIdAndWalletAsync(string orderId, string walletAddress)
+       
+        private decimal ConvertFromWei(BigInteger weiAmount, int decimals = 18)
         {
-            var transactionLog = await _transactionLogRepository.FindOneAsync(q => q.OrderId == orderId && q.UserWallet.ToLower() == walletAddress.ToLower()) ??
-               throw new NotFoundException("registered order not found!");
-            return transactionLog;
+            if (weiAmount < 0) throw new ArgumentException("Amount must be a positive integer.");
+            var factor = (decimal)BigInteger.Pow(10, decimals);
+            return (decimal)weiAmount / factor;
         }
 
-          }
+    }
 }

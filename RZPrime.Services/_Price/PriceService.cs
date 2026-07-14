@@ -1,13 +1,11 @@
-﻿using Microsoft.AspNetCore.DataProtection.KeyManagement;
-using Microsoft.CodeAnalysis;
+﻿using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging;
-using Nethereum.Contracts.Standards.ERC20.TokenList;
-using Newtonsoft.Json.Linq;
 using RZPrime.Services._Inventory.DTOs.Storages;
 using RZPrime.Services._Price.DTOs.Results;
 using RZPrime.Services._Price.DTOs.Settings;
 using RZPrime.Services._Price.DTOs.Storages;
 using RZPrime.Utilities.Exceptions.Common;
+using Services._Price._RZPriceService;
 using System.Collections.Concurrent;
 using System.Text.Json;
 using static RZPrime.Utilities.Constants.RegisterMode;
@@ -16,90 +14,159 @@ namespace RZPrime.Services._Price
 {
     public class PriceService(
         AvailableTokensSettings _availableTokenDatas,
-        CallPriceSettings _callPriceSettings,
-       ILogger<PriceService> logger,
-       RZUSDPriceStorage _rZUSDPriceStorage,
-        InventoryStorage _inventoryStorage) : IPriceService, ISingletonDependency
+        CallPriceSettings _priceSetting,
+        ILogger<PriceService> logger,
+        RZUSDPriceStorage _rZUSDPriceStorage,
+        InventoryStorage _inventoryStorage,
+        IRZPriceService _rZPriceService) : IPriceService, ISingletonDependency
     {
         private static readonly HttpClient _httpClient = new HttpClient();
         private readonly ILogger<PriceService> _logger = logger;
-        private decimal _cachedBnbPrice = 300m;
-        private DateTime _lastBnbPriceUpdate = DateTime.MinValue;
         private readonly SemaphoreSlim _priceLock = new(1, 1);
 
 
-        public async Task<PriceResult> FetchTokenPriceAsync(string tokenName)
+
+        /// <summary>
+        /// use for inventory
+        /// </summary>
+        /// <returns></returns>
+        public async Task<Dictionary<string, PriceResult>> FetchAllPricesForInternalUsageAsync()
         {
+            var result = new ConcurrentDictionary<string, PriceResult>();
+            var tokensForFetch = _availableTokenDatas.ToList();
+            var tokenNames = tokensForFetch.Select(t => t.Name).ToList();
+
             try
             {
-                return await FetchTokenPriceFromGeckoTerminalAsync(tokenName);
-            }
-            catch (Exception ex)
-            {
-                //Console.WriteLine($"Error fetching price in RZ for {tokenName.ToUpper()}: {ex.Message}");
-                return await FetchTokenPriceFromCoinMarketCapAsync(tokenName);
-            }
-        }
+                var rzPriceResults = await _rZPriceService.FetchTokensPriceAsync(tokenNames);
 
-
-        public async Task<PriceResult> FetchTokenPriceFromCoinMarketCapAsync(string tokenName)
-        {
-            try
-            {
-                var token = _availableTokenDatas
-                    .Where(t => t.Name == tokenName.ToUpper())
-                    .FirstOrDefault();
-
-                if (token == null) return null;
-
-
-                string idQuery = string.Join(",", token.CMCID);
-
-                string url =
-                    $"https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/latest?id={idQuery}&convert=USD";
-
-                var request = new HttpRequestMessage(HttpMethod.Get, url);
-                //request.Headers.Add("X-CMC_PRO_API_KEY", _callPriceSettings.ApiKey);
-                request.Headers.Add("X-CMC_PRO_API_KEY", "606c8bf4afaf4adbac00a2186880f75a");
-
-                var response = await _httpClient.SendAsync(request);
-                response.EnsureSuccessStatusCode();
-
-                var jsonString = await response.Content.ReadAsStringAsync();
-
-                using JsonDocument doc = JsonDocument.Parse(jsonString);
-
-                var data = doc.RootElement.GetProperty("data");
-
-                var id = token.CMCID.ToString();
-
-                if (!data.TryGetProperty(id, out var tokenData))
-                    return null;
-
-                var quote = tokenData
-                    .GetProperty("quote")
-                    .GetProperty("USD");
-
-                decimal price = quote.GetProperty("price").GetDecimal();
-                //decimal change24h = quote.GetProperty("percent_change_24h").GetDecimal();
-
-                var result = new PriceResult
+                if (rzPriceResults != null && rzPriceResults.Any())
                 {
-                    TokenName = token.Name,
-                    TokenNetwork = token.Network,
-                    Price = Math.Round(price, token.PriceDecimalPlaces),
-                };
+                    foreach (var rzPrice in rzPriceResults)
+                    {
+                        var priceResult = new PriceResult
+                        {
+                            TokenName = rzPrice.TokenName,
+                            TokenNetwork = rzPrice.TokenNetwork,
+                            Price = rzPrice.Price
+                        };
+                        result.TryAdd(rzPrice.TokenName, priceResult);
+                    }
+                    if(tokenNames.Count != result.Count)
+                    {
+                        throw new Exception("Mismatch in fetched prices count");
+                    }
 
 
-                return result;
+                    return result.ToDictionary(kv => kv.Key, kv => kv.Value);
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error syncing all prices");
-                return null;
+                try
+                {
+                    var coinMarketCapPrices = await SyncAllPricesFromCoinMarketCapAsync(tokensForFetch);
+
+                    if (coinMarketCapPrices != null && coinMarketCapPrices.Any())
+                    {
+                        foreach (var price in coinMarketCapPrices)
+                        {
+                            result.TryAdd(price.TokenName, price);
+                        }
+                    }
+                }
+                catch (Exception e)
+                {
+                    _logger.LogError(e, "Error fetching all prices from CoinMarketCap fallback");
+                }
+            }
+
+            return result.ToDictionary(kv => kv.Key, kv => kv.Value);
+        }
+
+        public async Task FetchAllPricesAsync()
+        {
+            try
+            {
+                await FetchRZUSDPriceAsync();
+                _logger.LogInformation("Successfully fetched RZUSD price");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error fetching RZUSD price");
+            }
+
+            var tokensDataToSync = _availableTokenDatas
+                .Where(t => t.SyncPrice)
+                .ToList();
+
+            var tokensNameToSync = tokensDataToSync
+                .Select(t => t.Name)
+                .ToList();
+
+            if (!tokensNameToSync.Any())
+            {
+                _logger.LogInformation("No tokens to sync");
+                return;
+            }
+
+
+            var fetchedPrices = new Dictionary<string, PriceResult>();
+
+            try
+            {
+                var rzPriceResults = await _rZPriceService.FetchTokensPriceAsync(tokensNameToSync);
+
+                if (rzPriceResults != null && rzPriceResults.Any())
+                {
+                    foreach (var rzPrice in rzPriceResults)
+                    {
+                        var priceResult = new PriceResult
+                        {
+                            TokenName = rzPrice.TokenName,
+                            TokenNetwork = rzPrice.TokenNetwork,
+                            Price = rzPrice.Price
+                        };
+                        fetchedPrices[rzPrice.TokenName] = priceResult;
+                    }
+                }
+                if (tokensDataToSync.Count != fetchedPrices.Count)
+                {
+                    throw new Exception("Mismatch in fetched prices count");
+                }
+            }
+            catch (Exception e)
+            {
+                var coinMarketCapPrices = await SyncAllPricesFromCoinMarketCapAsync(tokensDataToSync);
+
+                if (coinMarketCapPrices != null && coinMarketCapPrices.Any())
+                {
+                    foreach (var price in coinMarketCapPrices)
+                    {
+                        fetchedPrices[price.TokenName] = price;
+                    }
+
+                    _logger.LogInformation("Successfully fetched {Count} prices from CoinMarketCap", coinMarketCapPrices.Count);
+                }
+            }
+
+            foreach (var price in fetchedPrices.Values)
+            {
+                try
+                {
+                    _inventoryStorage.UpdatePrice(price.TokenName, price);
+                    _logger.LogDebug("Updated price for token {Token}: {Price}", price.TokenName, price.Price);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error updating price in inventory for token {Token}", price.TokenName);
+                }
             }
         }
 
+
+
+        #region RZUSD PRICE
 
         public async Task<decimal> GetRZUSDPriceAsync()
         {
@@ -142,67 +209,196 @@ namespace RZPrime.Services._Price
         public async Task<PriceResult> FetchRZUSDPriceAsync()
         {
             var tokenName = "RZUSD";
+            var tokenCMCID = 35716;
+
             PriceResult result = null;
+
             try
             {
-                result = await FetchTokenPriceFromGeckoTerminalAsync(tokenName);
+                var rzPriceResult = await _rZPriceService.FetchTokenPriceAsync(tokenName);
+                if (rzPriceResult != null)
+                {
+                    result = new PriceResult
+                    {
+                        TokenName = rzPriceResult.TokenName,
+                        TokenNetwork = rzPriceResult.TokenNetwork,
+                        Price = rzPriceResult.Price
+                    };
+
+                    _rZUSDPriceStorage.Price = result.Price;
+                    _rZUSDPriceStorage.LastUpdate = DateTime.UtcNow;
+                    return result;
+                }
             }
             catch (Exception ex)
             {
-                //Console.WriteLine($"Error fetching price in RZ for {tokenName.ToUpper()}: {ex.Message}");
-                result = await FetchTokenPriceFromCoinMarketCapAsync(tokenName);
+                _logger.LogWarning(ex, "Error fetching RZUSD price from RZPrice service, will fallback to CoinMarketCap");
             }
 
-            _rZUSDPriceStorage.Price = result.Price;
-            _rZUSDPriceStorage.LastUpdate = DateTime.UtcNow;
-            return result;
+            try
+            {
+                result = await SyncOneFromCoinMarketCapWithIdAsync(tokenName, tokenCMCID);
+
+                if (result != null && result.Price > 0)
+                {
+                    _rZUSDPriceStorage.Price = result.Price;
+                    _rZUSDPriceStorage.LastUpdate = DateTime.UtcNow;
+                    return result;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching RZUSD price from CoinMarketCap");
+            }
+
+            if (_rZUSDPriceStorage.Price > 0)
+            {
+                _logger.LogWarning("Using cached RZUSD price: {Price}", _rZUSDPriceStorage.Price);
+                return new PriceResult
+                {
+                    TokenName = tokenName,
+                    TokenNetwork = "BEP20",
+                    Price = _rZUSDPriceStorage.Price
+                };
+            }
+
+            throw new BadRequestException("Failed to fetch RZUSD price from all sources");
         }
 
-        public async Task FetchAllPricesAsync()
+        #endregion
+
+
+        #region CoinMarketCap Price
+        public async Task<PriceResult?> SyncOneFromCoinMarketCapWithIdAsync(string tokenName, long cmcId)
         {
-
-            await FetchRZUSDPriceAsync();
-            await Task.Delay(12000);
-
-            foreach (var token in _availableTokenDatas)
+            try
             {
-                if(!token.SyncPrice) continue;
 
-                var priceData = await FetchTokenPriceAsync(token.Name);
+                if (cmcId <= 0) return null;
 
-                if (priceData != null)
+                string url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest" + $"?id={cmcId}&convert=USD";
+
+
+                using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                request.Headers.Add("X-CMC_PRO_API_KEY", _priceSetting.CMCApiKey);
+                var response = await _httpClient.SendAsync(request);
+                response.EnsureSuccessStatusCode();
+
+                var jsonString = await response.Content.ReadAsStringAsync();
+                using JsonDocument doc = JsonDocument.Parse(jsonString);
+
+
+                var data = doc.RootElement.GetProperty("data");
+
+                var id = cmcId.ToString();
+
+
+                if (!data.TryGetProperty(id, out var tokenData)) return null;
+
+
+                var quote = tokenData.GetProperty("quote").GetProperty("USD");
+                decimal price = quote.GetProperty("price").GetDecimal();
+                decimal change24h = quote.GetProperty("percent_change_24h").GetDecimal();
+
+
+                return new PriceResult
                 {
-                    _inventoryStorage.UpdatePrice(token.Name, priceData);
-                }
+                    TokenName = tokenName,
+                    TokenNetwork = "BEP20",
+                    Price = price
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Error syncing price for CMC ID {CMCId}",
+                    cmcId
+                );
 
-                await Task.Delay(12000);
+                return null;
             }
         }
 
-
-        public async Task<Dictionary<string, PriceResult>> FetchAllPricesForInternalUsageAsync()
+        private async Task<List<PriceResult>> SyncAllPricesFromCoinMarketCapAsync(List<AvailableTokenData> tokensData)
         {
-            var result = new ConcurrentDictionary<string, PriceResult>();
-
-            var tasks = _availableTokenDatas.Select(async token =>
+            try
             {
-                var priceData = await FetchTokenPriceAsync(token.Name);
-                if (priceData != null)
+                var tokens = tokensData
+                    .Where(t => t.SyncPrice)
+                    .Where(t => t.CMCID > 0)
+                    .ToList();
+
+                var allTokens = tokens
+                    .GroupBy(t => new { t.CMCID, t.Network })
+                    .Select(g => g.First())
+                    .ToList();
+
+                if (!allTokens.Any())
+                    return new List<PriceResult>();
+
+                var ids = allTokens
+                    .Select(t => t.CMCID)
+                    .Distinct()
+                    .ToList();
+
+                string idQuery = string.Join(",", ids);
+
+                string url =
+                    $"https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/latest?id={idQuery}&convert=USD";
+
+                var request = new HttpRequestMessage(HttpMethod.Get, url);
+                request.Headers.Add("X-CMC_PRO_API_KEY", _priceSetting.CMCApiKey);
+
+                var response = await _httpClient.SendAsync(request);
+                response.EnsureSuccessStatusCode();
+
+                var jsonString = await response.Content.ReadAsStringAsync();
+
+                using JsonDocument doc = JsonDocument.Parse(jsonString);
+
+                var data = doc.RootElement.GetProperty("data");
+
+                var results = new List<PriceResult>();
+
+                foreach (var token in allTokens)
                 {
-                    result[token.Name] = priceData;
+                    var id = token.CMCID.ToString();
+
+                    if (!data.TryGetProperty(id, out var tokenData))
+                        continue;
+
+                    var quote = tokenData
+                        .GetProperty("quote")
+                        .GetProperty("USD");
+
+                    decimal price = quote.GetProperty("price").GetDecimal();
+
+                    results.Add(new PriceResult
+                    {
+                        TokenName = token.Name,
+                        TokenNetwork = token.Network,
+                        Price = Math.Round(price, token.PriceDecimalPlaces),
+                    });
                 }
-            });
 
-            await Task.WhenAll(tasks);
-
-            return result.ToDictionary(kv => kv.Key, kv => kv.Value);
+                return results;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error syncing all prices");
+                return new List<PriceResult>();
+            }
         }
+
+        #endregion
+
 
         public async Task<EffectivePriceResult> CalculateEffectivePriceAsync(string tokenName, decimal assetQuantity, decimal USDTAmount)
         {
             // Validate input parameters
             if (assetQuantity <= 0) throw new BadRequestException("Token quantity must be greater than zero.", nameof(assetQuantity));
-            var priceData = await FetchTokenPriceAsync(tokenName);
+            var priceData = await GetTokenPriceAsync(tokenName);
 
 
             if (priceData == null)
@@ -234,332 +430,50 @@ namespace RZPrime.Services._Price
                 throw new BaseException("Failed to calculate effective price due to an unexpected error.");
             }
         }
-
-        /// <summary>
-        /// this method use for fetch price data with token name
-        /// </summary>
-        /// <param name="tokenName"></param>
-        /// <param name="poolId"></param>
-        /// <returns></returns>
-        public async Task<PriceResult> FetchTokenPriceFromGeckoTerminalAsync(string tokenName, string poolId = null)
+        private async Task<PriceResult> GetTokenPriceAsync(string tokenName)
         {
-            var pool = poolId == null ? _availableTokenDatas.FirstOrDefault(q => q.Name == tokenName.ToUpper()).PoolId : poolId;
-            string url = $"https://api.geckoterminal.com/api/v2/networks/bsc/pools/{pool}";
+            if (_inventoryStorage.TryGetValue(tokenName.ToUpper(), out var existingInventoryData))
+            {
+                if (existingInventoryData?.Price != null && existingInventoryData.Price.Price > 0)
+                {
+                    return existingInventoryData.Price;
+                }
+            }
 
             try
             {
-                var response = await _httpClient.GetAsync(url);
-                response.EnsureSuccessStatusCode();
-
-                var jsonString = await response.Content.ReadAsStringAsync();
-                //_logger.LogInformation(jsonString);
-                using JsonDocument doc = JsonDocument.Parse(jsonString);
-
-                // Go into data → attributes
-                var attributes = doc.RootElement
-                    .GetProperty("data")
-                    .GetProperty("attributes");
-
-                decimal basePrice = decimal.Parse(attributes.GetProperty("base_token_price_usd").GetString()!);
-                decimal quotePrice = decimal.Parse(attributes.GetProperty("quote_token_price_usd").GetString()!);
-
-                decimal liquidityUsd = decimal.Parse(attributes.GetProperty("reserve_in_usd").GetString()!);
-                decimal volume24h = decimal.Parse(attributes.GetProperty("volume_usd").GetProperty("h24").GetString()!);
-                decimal? poolFee = attributes.TryGetProperty("pool_fee_percentage", out var feeProp) && feeProp.ValueKind != JsonValueKind.Null
-                                   ? decimal.Parse(feeProp.GetString()!)
-                                   : (decimal?)null;
-
-                return new PriceResult
+                var rzPriceResult = await _rZPriceService.FetchTokenPriceAsync(tokenName);
+                if (rzPriceResult != null)
                 {
-                    //TokenAddress = attributes.GetProperty("address").GetString(),
-                    //TokenName = attributes.GetProperty("name").GetString(),
-                    TokenName = tokenName,
-                    TokenNetwork = "BSC",
-                    Price = basePrice,
-                    //LiquidityUsd = liquidityUsd,
-                    //Volume24hUsd = volume24h,
-                    //PoolFeeRate = poolFee,
-                    //ReserveBaseUsd = basePrice * liquidityUsd,
-                    //ReserveQuoteUsd = quotePrice * liquidityUsd,
-                    //QuoteTokenPriceUsd = quotePrice
-                };
+                    return new PriceResult
+                    {
+                        TokenName = rzPriceResult.TokenName,
+                        TokenNetwork = rzPriceResult.TokenNetwork,
+                        Price = rzPriceResult.Price
+                    };
+                }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error fetching token price gecko for {tokenName}: {ex.Message}");
-                return null;
+                _logger.LogWarning(ex, "Error fetching price from RZPrice service for {Token}, will try CoinMarketCap", tokenName);
             }
+
+            try
+            {
+                var token = _availableTokenDatas.FirstOrDefault(t => t.Name == tokenName.ToUpper());
+                if (token != null && token.CMCID > 0)
+                {
+                    return await SyncOneFromCoinMarketCapWithIdAsync(tokenName, token.CMCID);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error fetching price from CoinMarketCap for {Token}", tokenName);
+            }
+
+            _logger.LogWarning("Could not fetch price for token {Token} from any source", tokenName);
+            return null;
         }
-
-        #region Methods for use Gecko Terminal
-
-        //public class PriceResult
-        //{
-        //    public string TokenAddress { get; set; }
-        //    public string TokenName { get; set; }
-        //    public string TokenNetwork { get; set; }
-        //    public decimal Price { get; set; }
-        //    public decimal LiquidityUsd { get; set; }
-        //    public decimal Volume24hUsd { get; set; }
-        //    public decimal? PoolFeeRate { get; set; }
-        //    public decimal ReserveBaseUsd { get; set; }
-        //    public decimal ReserveQuoteUsd { get; set; }
-        //    public decimal QuoteTokenPriceUsd { get; set; }
-        //}
-
-
-
-
-        ///// <summary>
-        ///// this method use for scheduler for fetching data
-        ///// </summary>
-        ///// <returns></returns>
-        //public async Task FetchAllPricesFromGeckoTerminalAsync() 
-        //{
-        //    var tasks = _availableTokenDatas.Select(async token =>
-        //    {
-        //        var priceData = await FetchTokenPriceFromGeckoTerminalAsync(token.Name, token.PoolId);
-        //        if (priceData != null)
-        //        {
-        //            _inventoryStorage.UpdatePrice(token.Name, priceData);
-        //        }
-        //    });
-
-        //    await Task.WhenAll(tasks);
-        //}
-
-        //public async Task<Dictionary<string, PriceResult>> FetchAllPricesFromGeckoTerminalForInternalUsageAsync()
-        //{
-        //    var result = new ConcurrentDictionary<string, PriceResult>();
-
-        //    var tasks = _availableTokenDatas.Select(async token =>
-        //    {
-        //        var priceData = await FetchTokenPriceFromGeckoTerminalAsync(token.Name, token.PoolId);
-        //        if (priceData != null)
-        //        {
-        //            result[token.Name] = priceData;
-        //        }
-        //    });
-
-        //    await Task.WhenAll(tasks);
-
-        //    return result.ToDictionary(kv => kv.Key, kv => kv.Value);
-        //}
-
-
-
-
-        ///// <summary>
-        ///// this method calculate the effective price by user given quantity for buying the token
-        ///// </summary>
-        ///// <param name="assetQuantity"></param>
-        ///// <param name="priceData"></param>
-        ///// <returns></returns>
-        ///// <exception cref="BadRequestException"></exception>
-        //public async Task<EffectivePriceResult> CalculateEffectivePriceAsync(string tokenName, decimal assetQuantity)
-        //{
-        //    // Validate input parameters
-        //    if (assetQuantity <= 0) throw new BadRequestException("Token quantity must be greater than zero.", nameof(assetQuantity));
-        //    var priceData = await FetchTokenPriceFromGeckoTerminalAsync(tokenName);
-
-
-        //    if (priceData == null) throw new BadRequestException(nameof(priceData), "Price data cannot be null.");
-
-        //    try
-        //    {
-        //        // Get BNB price (needed for calculations)
-        //        var bnbPriceUsd = await GetBnbPriceUsdAsync();
-
-        //        var totalReserveUsd = priceData.LiquidityUsd;
-
-        //        var reserveToken = totalReserveUsd * 0.5m / priceData.Price;
-
-        //        var reserveQuote = totalReserveUsd * 0.5m / priceData.QuoteTokenPriceUsd;
-
-
-
-        //        if (reserveToken <= 0 || reserveQuote <= 0)
-        //            throw new InvalidOperationException("Calculated reserves are invalid. Pool may be imbalanced.");
-
-        //        var maxTradeSize = reserveToken * 0.01m;
-        //        if (assetQuantity > maxTradeSize)
-        //        {
-        //            throw new InvalidOperationException($"Trade size too large. Maximum available: {maxTradeSize} tokens (1% of pool liquidity).");
-        //        }
-
-
-        //        var k = reserveToken * reserveQuote; // Constant product
-        //        var newReserveToken = reserveToken - assetQuantity;
-        //        var newReserveQuote = k / newReserveToken;
-        //        var quoteTokensRequired = newReserveQuote - reserveQuote;
-
-        //        var fee = priceData.PoolFeeRate ?? 0.0025m;
-        //        var quoteTokensToPay = quoteTokensRequired / (1 - fee);
-
-        //        var totalCostUsd = quoteTokensToPay * priceData.QuoteTokenPriceUsd;
-        //        var effectivePricePerToken = totalCostUsd / assetQuantity;
-
-        //        var priceImpact = (effectivePricePerToken - priceData.Price) / priceData.Price * 100;
-
-        //        return new EffectivePriceResult
-        //        {
-        //            MarketPrice = priceData.Price,
-        //            EffectivePrice = effectivePricePerToken,
-        //            PriceImpact = priceImpact,
-        //            TotalCost = totalCostUsd,
-        //            BnbPriceUsd = bnbPriceUsd,
-        //            TokenReserve = reserveToken,
-        //            BnbReserve = reserveQuote // Note: This is actually the quote token reserve
-        //        };
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        _logger.LogError(ex, "Unexpected error calculating effective price for {Token}", priceData.TokenName);
-        //        throw new BaseException("Failed to calculate effective price due to an unexpected error.");
-        //    }
-        //}
-
-
-        ///// <summary>
-        ///// this method calculate the effective price by user given quantity for buying the token
-        ///// </summary>
-        ///// <param name="assetQuantity"></param>
-        ///// <param name="priceData"></param>
-        ///// <returns></returns>
-        ///// <exception cref="BadRequestException"></exception>
-        //public async Task<EffectivePriceResult> CalculateEffectivePriceForLandingAsync(string tokenName, decimal assetQuantity)
-        //{
-        //    if (assetQuantity <= 0) throw new BadRequestException("Token quantity must be greater than zero.", nameof(assetQuantity));
-
-        //    PriceResult priceData;
-        //    var priceDataExists = _inventoryStorage.TryGetValue(tokenName, out var res);
-        //    if (res == null)
-        //    {
-        //        priceData = await FetchTokenPriceFromGeckoTerminalAsync(tokenName);
-        //    }
-        //    else
-        //    {
-        //        priceData = res.Price;
-        //    }
-
-        //    if (priceData == null) throw new BadRequestException(nameof(priceData), "Price data cannot be null.");
-
-        //    try
-        //    {
-        //        // Get BNB price (needed for calculations)
-        //        var bnbPriceUsd = await GetBnbPriceUsdAsync();
-
-        //        // Calculate reserves in token units
-        //        // From the Python code, we see reserve_in_usd is the total pool value
-        //        // So we need to split it between base and quote tokens
-        //        var totalReserveUsd = priceData.LiquidityUsd;
-
-        //        // Calculate base token reserves (amount of INSURANCE in pool)
-        //        var reserveToken = totalReserveUsd * 0.5m / priceData.Price;
-
-        //        // Calculate quote token reserves (amount of MGC in pool)
-        //        var reserveQuote = totalReserveUsd * 0.5m / priceData.QuoteTokenPriceUsd;
-
-        //        // Validate reserves
-        //        if (reserveToken <= 0 || reserveQuote <= 0)
-        //            throw new InvalidOperationException("Calculated reserves are invalid. Pool may be imbalanced.");
-
-        //        // More conservative trade size check (1% of pool)
-        //        var maxTradeSize = reserveToken * 0.01m;
-        //        if (assetQuantity > maxTradeSize)
-        //        {
-        //            throw new InvalidOperationException($"Trade size too large. Maximum available: {maxTradeSize} tokens (1% of pool liquidity).");
-        //        }
-
-        //        // Calculate required quote tokens using proper AMM formula
-        //        // Following the Python implementation exactly
-        //        var k = reserveToken * reserveQuote; // Constant product
-        //        var newReserveToken = reserveToken - assetQuantity;
-        //        var newReserveQuote = k / newReserveToken;
-        //        var quoteTokensRequired = newReserveQuote - reserveQuote;
-
-        //        // Apply fee (0.25% for PancakeSwap)
-        //        var fee = priceData.PoolFeeRate ?? 0.0025m;
-        //        var quoteTokensToPay = quoteTokensRequired / (1 - fee);
-
-        //        // Convert to USD
-        //        var totalCostUsd = quoteTokensToPay * priceData.QuoteTokenPriceUsd;
-        //        var effectivePricePerToken = totalCostUsd / assetQuantity;
-
-        //        // Calculate price impact percentage
-        //        var priceImpact = (effectivePricePerToken - priceData.Price) / priceData.Price * 100;
-
-        //        return new EffectivePriceResult
-        //        {
-        //            MarketPrice = priceData.Price,
-        //            EffectivePrice = effectivePricePerToken,
-        //            PriceImpact = priceImpact,
-        //            TotalCost = totalCostUsd,
-        //            BnbPriceUsd = bnbPriceUsd,
-        //            TokenReserve = reserveToken,
-        //            BnbReserve = reserveQuote 
-        //        };
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        _logger.LogError(ex, "Unexpected error calculating effective price for {Token}", priceData.TokenName);
-        //        throw new BaseException("Failed to calculate effective price due to an unexpected error.");
-        //    }
-        //}
-
-
-        ///// <summary>
-        ///// this method work with bnb cache price
-        ///// </summary>
-        ///// <returns></returns>
-        //private async Task<decimal> GetBnbPriceUsdAsync()
-        //{
-        //    if ((DateTime.UtcNow - _lastBnbPriceUpdate).TotalMinutes < 5)
-        //    {
-        //        return _cachedBnbPrice;
-        //    }
-
-        //    try
-        //    {
-        //        var newPrice = await FetchBnbPriceFromApi();
-        //        _cachedBnbPrice = newPrice;
-        //        _lastBnbPriceUpdate = DateTime.UtcNow;
-        //        return newPrice;
-        //    }
-        //    catch
-        //    {
-        //        return _cachedBnbPrice;
-        //    }
-        //}
-
-
-        ///// <summary>
-        ///// for fetching bnb price from api
-        ///// </summary>
-        ///// <returns></returns>
-        //private async Task<decimal> FetchBnbPriceFromApi()
-        //{
-        //    try
-        //    {
-
-        //        var response = await _httpClient.GetAsync("https://api.coingecko.com/api/v3/simple/price?ids=binancecoin&vs_currencies=usd");
-        //        response.EnsureSuccessStatusCode();
-
-        //        var jsonString = await response.Content.ReadAsStringAsync();
-        //        using var doc = JsonDocument.Parse(jsonString);
-
-        //        return doc.RootElement
-        //            .GetProperty("binancecoin")
-        //            .GetProperty("usd")
-        //            .GetDecimal();
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        _logger.LogError(ex, "Error fetching BNB price, using default value 300");
-        //        return 300m; // Default fallback value
-        //    }
-        //}
-        #endregion
 
     }
 

@@ -13,6 +13,14 @@ namespace RZPrime.Services._BlockChain.DTOs.Settings
         public long ChainId { get; set; }
         public int TransactionTimeoutSeconds { get; set; }
 
+        public string WsUrl { get; set; }
+        public string WsUrl2 { get; set; }
+        public int ReconnectInterval { get; set; } = 5;
+        public int MaxReconnectAttempts { get; set; } = 30;
+        public int HeartbeatInterval { get; set; } = 30;
+        public int ConnectionTimeout { get; set; } = 10;
+        public int SubscriptionTimeout { get; set; } = 30;
+
         public string DefaultGasLimit { get; set; }
         public string DefaultGasPriceGwei { get; set; }
         public string MinGasPriceGwei { get; set; }

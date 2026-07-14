@@ -41,7 +41,9 @@ namespace RZPrime.Services._Order.DTOs.Results
         public OrderState State { get; set; } = OrderState.Registered;
         public DateTime? ChangeStateMoment { get; set; } = null;
         public string Promotion { get; set; }
-        public List<OrderTransactionMeta> TransactionsMetaData { get; set; } 
+        public List<OrderTransactionMeta> TransactionsMetaData { get; set; }
+
+        public decimal? CampaignDiscount { get; set; } = null;
 
 
 

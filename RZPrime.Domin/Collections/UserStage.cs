@@ -1,6 +1,5 @@
 ﻿using RZPrime.Utilities.Attributes;
 using RZPrime.Utilities.MongoDatabase.Documents;
-using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 
 namespace RZPrime.Domain.Collections

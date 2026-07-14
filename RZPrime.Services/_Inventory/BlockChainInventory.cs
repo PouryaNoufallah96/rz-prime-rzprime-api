@@ -2,6 +2,7 @@
 using RZPrime.Services._Inventory.DTOs.Storages;
 using RZPrime.Services._Price.DTOs.Settings;
 using RZPrime.Services._Price;
+using RZPrime.Services._Price.DTOs.Results;
 using static RZPrime.Utilities.Constants.RegisterMode;
 using RZPrime.Services._BlockChain;
 using RZPrime.Domain.Collections;
@@ -30,11 +31,10 @@ namespace RZPrime.Services._Inventory
         /// <exception cref="BadRequestException"></exception>
         public async Task<ConcurrentDictionary<string, InventoryData>> GetExistingTokensDataAsync()
         {
-
             var inventories = await _blockChainService.GetBalancesMultiCallAsync();
             var orderSums = await GetSumOfPaidAndRegisteredOrderedTokensAsync();
 
-
+            // Subtract ordered amounts from inventories
             foreach (var kvp in orderSums)
             {
                 if (inventories.TryGetValue(kvp.Key, out var inv))
@@ -45,33 +45,28 @@ namespace RZPrime.Services._Inventory
                 }
             }
 
-            var prices = await _priceService.FetchAllPricesForInternalUsageAsync();
-
             var result = new ConcurrentDictionary<string, InventoryData>();
+
             foreach (var inv in inventories)
             {
-                if (prices.TryGetValue(inv.Key, out var priceData))
+                PriceResult price = null;
+
+                if (_inventoryStorage.TryGetValue(inv.Key, out var existingInventoryData))
                 {
-                    result[inv.Key] = new InventoryData
-                    {
-                        LastUpdated = DateTime.UtcNow,
-                        Price = priceData,
-                        Quantity = inv.Value
-                    };
+                    price = existingInventoryData.Price;
                 }
-                else
+
+                result[inv.Key] = new InventoryData
                 {
-                    result[inv.Key] = new InventoryData
-                    {
-                        LastUpdated = DateTime.UtcNow,
-                        Price = null,
-                        Quantity = inv.Value
-                    };
-                }
+                    LastUpdated = DateTime.UtcNow,
+                    Price = price,
+                    Quantity = inv.Value
+                };
             }
 
             return result;
         }
+
 
         public async Task<decimal> GetQuantityAsyncGetOneByTokenNameForInternalUsageAsync(string tokenName)
         {
@@ -99,7 +94,6 @@ namespace RZPrime.Services._Inventory
             _inventoryStorage.UpdateQuantity(tokenName, quantity);
         }
 
-     
 
         /// <summary>
         /// this method use for initialize the storage for the quantity field
@@ -153,6 +147,6 @@ namespace RZPrime.Services._Inventory
             return result;
         }
 
-        
+
     }
 }

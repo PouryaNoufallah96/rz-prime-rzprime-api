@@ -22,6 +22,14 @@ services:
       - MonjoSettings__ConnectionString=$mongodb_connection
       - MonjoSettings__DatabaseName=$database_name
 
+      # RZ Price
+      - RZPriceSetting__BaseUrl=$rzpricesetting_base_url
+      - RZPriceSetting__MasterKey=$rzpricesetting_master_key
+
+      # Call Price
+      - CallPriceSettings__CMCApiKey=$callpricesettings_cmc_api_key
+      - CallPriceSettings__BaseUrl=$callpricesettings_base_url
+
       # JWT
       - JwtServiceSettings__Issuer=$jwtservicesettings_issuer
       - JwtServiceSettings__Audience=$jwtservicesettings_audience
@@ -33,8 +41,11 @@ services:
       - JwtServiceSettings__ClientInfo__web_mainsets=$jwtservicesettings_clientinfo_web_value
       - JwtServiceSettings__ClientInfo__app_mainappful=$jwtservicesettings_clientinfo_app_value
 
-      # Blockchain
+        # Blockchain
       - BlockChainSettings__RpcUrl=$blockchainsettings_rpc_url
+      - BlockChainSettings__RpcUrl2=$blockchainsettings_rpc_url2
+      - BlockChainSettings__WsUrl=$blockchainsettings_ws_url
+      - BlockChainSettings__WsUrl2=$blockchainsettings_ws_url2
       - BlockChainSettings__ContractAddress=$blockchainsettings_contract_address
       - BlockChainSettings__PrivateKey=$blockchainsettings_private_key
       - BlockChainSettings__PublicAddress=$blockchainsettings_public_address
@@ -44,16 +55,11 @@ services:
       - BlockChainSettings__DefaultGasPriceGwei=$blockchainsettings_default_gas_price_gwei
       - BlockChainSettings__MinGasPriceGwei=$blockchainsettings_min_gas_price_gwei
       - BlockChainSettings__MaxGasPriceGwei=$blockchainsettings_max_gas_price_gwei
-
-      # Blockchain WebSocket
-      - BlockchainWebSocketSetting__WsUrl=$blockchainwebsocketsetting_ws_url
-      - BlockchainWebSocketSetting__WsUrl2=$blockchainwebsocketsetting_ws_url2
-      - BlockchainWebSocketSetting__ContractAddress=$blockchainwebsocketsetting_contract_address
-      - BlockchainWebSocketSetting__ReconnectInterval=$blockchainwebsocketsetting_reconnect_interval
-      - BlockchainWebSocketSetting__MaxReconnectAttempts=$blockchainwebsocketsetting_max_reconnect_attempts
-      - BlockchainWebSocketSetting__HeartbeatInterval=$blockchainwebsocketsetting_heartbeat_interval
-      - BlockchainWebSocketSetting__ConnectionTimeout=$blockchainwebsocketsetting_connection_timeout
-      - BlockchainWebSocketSetting__SubscriptionTimeout=$blockchainwebsocketsetting_subscription_timeout
+      - BlockChainSettings__ReconnectInterval=$blockchainsettings_reconnect_interval
+      - BlockChainSettings__MaxReconnectAttempts=$blockchainsettings_max_reconnect_attempts
+      - BlockChainSettings__HeartbeatInterval=$blockchainsettings_heartbeat_interval
+      - BlockChainSettings__ConnectionTimeout=$blockchainsettings_connection_timeout
+      - BlockChainSettings__SubscriptionTimeout=$blockchainsettings_subscription_timeout
 
       # Application Pool Settings -> Applications[0]
       - ApplicationPoolSettings__Applications__0__ApplicationId=$applicationpoolsettings_applications_0_application_id

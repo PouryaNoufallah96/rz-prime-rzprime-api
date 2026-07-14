@@ -5,7 +5,6 @@ namespace RZPrime.Services._Price
 {
     public interface IPriceService
     {
-        Task<PriceResult> FetchTokenPriceAsync(string tokenName);
         Task FetchAllPricesAsync();
         Task<Dictionary<string, PriceResult>> FetchAllPricesForInternalUsageAsync();
         Task<EffectivePriceResult> CalculateEffectivePriceAsync(string tokenName, decimal assetQuantity, decimal USDTAmount);

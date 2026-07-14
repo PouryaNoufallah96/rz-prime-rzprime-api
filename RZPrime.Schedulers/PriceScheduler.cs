@@ -5,7 +5,7 @@ using static RZPrime.Utilities.Constants.RegisterMode;
 
 namespace RZPrime.Schedulers
 {
-    public class PriceScheduler(IServiceProvider serviceProvider) : SchedulerBase(serviceProvider, TimeSpan.FromMinutes(3)), IHostedDependency
+    public class PriceScheduler(IServiceProvider serviceProvider) : SchedulerBase(serviceProvider, TimeSpan.FromMinutes(2)), IHostedDependency
     {
         protected override async Task HandleAsync(IServiceProvider scopedProvider)
         {

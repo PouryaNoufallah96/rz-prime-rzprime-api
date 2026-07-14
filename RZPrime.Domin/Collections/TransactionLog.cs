@@ -8,27 +8,18 @@ namespace RZPrime.Domain.Collections
     {
         public string TransactionLogId { get; set; } = Guid.NewGuid().ToString("N");
         public string OrderId { get; set; }
+        public string Address { get; set; }
         public string UserWallet { get; set; }
         public string TokenName { get; set; } 
-        public decimal TokenAmount { get; set; }
-        public decimal USDTAmount { get; set; }
-        public bool IsError { get; set; } = false;
-        public List<TransactionLogHistory> Histories { get; set; } = [];
-    }
-
-
-    public class TransactionLogHistory
-    {
-        public DateTime CreateMoment { get; set; } = DateTime.UtcNow;
-        public string From { get; set; }
-        public string To { get; set; }
+        public string TokenAmount { get; set; }
+        public string USDTAmount { get; set; }
         public string Hash { get; set; }
-        public long BlockNumber { get; set; }
+        public decimal BlockNumber { get; set; }
         public BlockchainEventType EventType { get; set; }
         public TransactionStatus Status { get; set; }
-        public decimal Amount { get; set; } 
-
     }
+
+
 
     public enum TransactionStatus
     {
@@ -42,11 +33,10 @@ namespace RZPrime.Domain.Collections
     {
         OrderRegistered,
         OrderExecuted,
+        OrderExpired,
         TransactionConfirmed,
         TransactionFailed,
         BlockMined, 
-        NetworkStatus,
-        OrderExpired
+        NetworkStatus
     }
 }
-//db.TransactionLogs.find({ OrderId: "76514cd2f4664c66bf3cb86d515dc636"})

@@ -5,10 +5,11 @@ using RZPrime.Api.Utilities.Middlewares;
 using RZPrime.Services._Inventory._Hub;
 using RZPrime.Services._User._Hub;
 using RZPrime.Utilities.Configuration;
+using Services._Price._RZPriceService;
 using System.Text.Json.Serialization;
 var builder = WebApplication.CreateBuilder(args);
 
-
+builder.Services.AddHttpClient<IRZPriceService, RZPriceService>();
 
 builder.Services.AddCustomControllers();
 

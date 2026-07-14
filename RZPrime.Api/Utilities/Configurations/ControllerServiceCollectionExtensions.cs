@@ -5,6 +5,7 @@ using RZPrime.Services._BlockChainWebSocket.DTOs;
 using RZPrime.Services._Encryption.DTOs.Settings;
 using RZPrime.Services._Price.DTOs.Settings;
 using RZPrime.Services._UserStage.DTOs.Settings;
+using Services._Price._RZPriceService.DTOs;
 
 namespace RZPrime.Api.Utilities.Configurations
 {
@@ -16,9 +17,9 @@ namespace RZPrime.Api.Utilities.Configurations
             services.RegisterSetting<CustomEncryptionSetting>(configuration.GetSection(nameof(CustomEncryptionSetting)));         
             services.RegisterSetting<UserStageSetting>(configuration.GetSection(nameof(UserStageSetting)));         
             services.RegisterSetting<AvailableTokensSettings>(configuration.GetSection(nameof(AvailableTokensSettings)));         
-            services.RegisterSetting<BlockchainWebSocketSetting>(configuration.GetSection(nameof(BlockchainWebSocketSetting)));         
             services.RegisterSetting<BlockChainSettings>(configuration.GetSection(nameof(BlockChainSettings)));         
             services.RegisterSetting<CallPriceSettings>(configuration.GetSection(nameof(CallPriceSettings)));         
+            services.RegisterSetting<RZPriceSetting>(configuration.GetSection(nameof(RZPriceSetting)));         
         }
 
         private static void RegisterSetting<TSettings>(this IServiceCollection services, IConfigurationSection configuration)

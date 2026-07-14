@@ -39,7 +39,11 @@ namespace RZPrime.Domain.Collections
         public List<OrderTransactionMeta> TransactionsMetaData { get; set; } = [];
 
         [BsonDefaultValue(null)] public string DropSignature { get; set; } = null;
-        [BsonDefaultValue(null)] public string DropTransactionHash { get; set; } = null; 
+        [BsonDefaultValue(null)] public string DropTransactionHash { get; set; } = null;
+
+        public string CampaignReference { get; set; } = null;
+        public decimal? CampaignDiscount { get; set; } = null;
+         
     }
      
 
