@@ -37,7 +37,10 @@ namespace Services._Price._RZPriceService
 
                 response.EnsureSuccessStatusCode();
 
-                return await response.Content.ReadFromJsonAsync<RZPriceResult>();
+
+                var result = await response.Content.ReadFromJsonAsync<ApiResponse<RZPriceResult>>();
+
+                return result?.Data;
             }
             catch (Exception)
             {
@@ -60,8 +63,9 @@ namespace Services._Price._RZPriceService
 
                 response.EnsureSuccessStatusCode();
 
-                return await response.Content.ReadFromJsonAsync<List<RZPriceResult>>()
-                       ?? new List<RZPriceResult>();
+                var result = await response.Content.ReadFromJsonAsync<ApiResponse<List<RZPriceResult>>>();
+
+                return result?.Data ?? new List<RZPriceResult>();
             }
             catch (Exception)
             {
@@ -84,7 +88,9 @@ namespace Services._Price._RZPriceService
 
                 response.EnsureSuccessStatusCode();
 
-                return await response.Content.ReadFromJsonAsync<CoinHistoryData>();
+                var result = await response.Content.ReadFromJsonAsync<ApiResponse<CoinHistoryData>>();
+
+                return result?.Data;
             }
             catch (Exception ex)
             {
