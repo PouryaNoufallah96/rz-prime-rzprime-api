@@ -19,7 +19,7 @@ namespace Services._Price._RZPriceService
         {
             var request = new HttpRequestMessage(method, url);
 
-            request.Headers.Add("ApplicationId", "test");
+            request.Headers.Add("ApplicationId", "pricehub.mainweb");
             request.Headers.Add("Signature", _setting.MasterKey);
 
             return request;
