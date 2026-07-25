@@ -281,8 +281,6 @@ namespace RZPrime.Services._Order
                 throw new BadRequestException("order not found!");
             }
 
-            var paymentAmountInWei = await _blockChainService.PreviewPaymentAmountAsync(walletAddress, update.OrderId);
-
             var result = new OrderResult
             {
                 CreatedMoment = order.CreatedMoment,
@@ -305,11 +303,17 @@ namespace RZPrime.Services._Order
                 TokenName = order.TokenName,
                 TokenNetwork = order.TokenNetwork,
                 UserStageId = order.UserStageId,
-                PayAmountInWei = paymentAmountInWei.ToString(),
+                PayAmountInWei = order.PayAmountInWei,
                 TokenAmountInWei = order.TokenAmountInWei,
                 TransactionsMetaData = order.TransactionsMetaData,
                 CampaignDiscount = order.CampaignDiscount
             };
+
+            if (order.State == OrderState.Registered)
+            {
+                var paymentAmountInWei = await _blockChainService.PreviewPaymentAmountAsync(walletAddress, update.OrderId);
+                order.PayAmountInWei = paymentAmountInWei.ToString();
+            }
 
             return result;
         }
