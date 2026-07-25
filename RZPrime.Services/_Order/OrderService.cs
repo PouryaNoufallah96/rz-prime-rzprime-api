@@ -15,6 +15,7 @@ using RZPrime.Services._Price.DTOs.Results;
 using RZPrime.Services._Price.DTOs.Settings;
 using RZPrime.Services._UserStage;
 using RZPrime.Services._UserStage.DTOs.Settings;
+using RZPrime.Utilities.DTOs;
 using RZPrime.Utilities.Exceptions.Common;
 using RZPrime.Utilities.Extension;
 using RZPrime.Utilities.Utilities;
@@ -269,6 +270,49 @@ namespace RZPrime.Services._Order
         }
 
 
+        public async Task<OrderResult> GetOrderDetailAsync(GetOrderDetailUpdate update, string walletAddress)
+        {
+            var order = await _orderRepository.AsQueryable()
+            .Where(x => x.WalletAddress.ToLower() == walletAddress.ToLower())
+            .Where(x => x.OrderId == update.OrderId).FirstOrDefaultAsync();
+
+            if(order == null)
+            {
+                throw new BadRequestException("order not found!");
+            }
+
+            var paymentAmountInWei = await _blockChainService.PreviewPaymentAmountAsync(walletAddress, update.OrderId);
+
+            var result = new OrderResult
+            {
+                CreatedMoment = order.CreatedMoment,
+                ModifiedMoment = order.ModifiedMoment,
+                OrderId = order.OrderId,
+                State = order.State,
+                WalletAddress = walletAddress,
+                ChangeStateMoment = order.ChangeStateMoment,
+                FinalAmount = order.FinalAmount,
+                LoanAmount = order.LoanAmount,
+                LoanInterestAmount = order.LoanInterestAmount,
+                MonthDuration = order.MonthDuration,
+                PayOffDate = order.PayOffDate,
+                ProfitRatePerMonth = order.ProfitRatePerMonth,
+                Promotion = order.Promotion,
+                Quantity = order.TokenAmount,
+                Stage = order.Stage,
+                TokenAddress = order.TokenAddress,
+                TokenEffectivePrice = order.TokenEffectivePrice,
+                TokenName = order.TokenName,
+                TokenNetwork = order.TokenNetwork,
+                UserStageId = order.UserStageId,
+                PayAmountInWei = paymentAmountInWei.ToString(),
+                TokenAmountInWei = order.TokenAmountInWei,
+                TransactionsMetaData = order.TransactionsMetaData,
+                CampaignDiscount = order.CampaignDiscount
+            };
+
+            return result;
+        }
 
 
         /// <summary>
@@ -305,6 +349,7 @@ namespace RZPrime.Services._Order
             }
 
         }
+
 
         public async Task SignDropsAsync()
         {

@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Nethereum.Contracts;
+using Nethereum.Hex.HexConvertors.Extensions;
 using Nethereum.Hex.HexTypes;
 using Nethereum.RPC.Eth.DTOs;
 using Nethereum.Web3;
@@ -93,7 +94,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
 
         #region Order
 
-        private async Task PollOrderMissingLogsAsync(BigInteger latestBlock, CancellationToken cancellationToken) 
+        private async Task PollOrderMissingLogsAsync(BigInteger latestBlock, CancellationToken cancellationToken)
         {
 
             if (_orderLastProcessedBlock < 1)
@@ -132,8 +133,11 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                             var orderRegistered = log.DecodeEvent<OrderRegisteredEventDTO>();
                             if (orderRegistered != null)
                             {
-                                _logger.LogInformation("OrderRegistered: {OrderId} by {User}",
-                                    orderRegistered.Event.OrderId, orderRegistered.Event.User);
+                                await LogOrderRegisteredEvent(orderRegistered, log);
+
+                                SentrySdk.CaptureMessage(
+                                    $"OrderRegistered: {orderRegistered.Event.OrderId} by {orderRegistered.Event.User}"
+                                );
 
                                 continue;
                             }
@@ -141,14 +145,11 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                             var orderExecuted = log.DecodeEvent<OrderExecutedEventDTO>();
                             if (orderExecuted != null)
                             {
-                                _logger.LogInformation("OrderExecuted: {OrderId} by {User}",
-                                    orderExecuted.Event.OrderId, orderExecuted.Event.User);
+                                await LogOrderExecutedEvent(orderExecuted, log);
 
                                 SentrySdk.CaptureMessage(
                                     $"OrderExecuted: {orderExecuted.Event.OrderId} by {orderExecuted.Event.User}"
                                 );
-
-                                await LogOrderExecutedEvent(orderExecuted, log);
 
                                 continue;
                             }
@@ -156,14 +157,12 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                             var orderExpired = log.DecodeEvent<OrderExpiredEventDTO>();
                             if (orderExpired != null)
                             {
-                                _logger.LogInformation("OrderExpired: {OrderId} by {User}",
-                                    orderExpired.Event.OrderId, orderExpired.Event.User);
+
+                                await LogOrderExpiredEvent(orderExpired, log);
 
                                 SentrySdk.CaptureMessage(
                                     $"OrderExpired: {orderExpired.Event.OrderId} by {orderExpired.Event.User}"
                                 );
-
-                                await LogOrderExpiredEvent(orderExpired, log);
 
                                 continue;
                             }
@@ -194,8 +193,62 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             }
         }
 
+        private async Task LogOrderRegisteredEvent(EventLog<OrderRegisteredEventDTO> eventLog, FilterLog log)
+        {
+            try
+            {
+                var campaignIdHex = ByteArray32ToHex(eventLog.Event.CampaignId);
+                var block = (long)log.BlockNumber.Value;
+
+                var hasCampaign = !string.IsNullOrEmpty(campaignIdHex)
+                    && campaignIdHex != "0x0000000000000000000000000000000000000000000000000000000000000000"
+                    && eventLog.Event.DiscountBps > 0;
+
+                _logger.LogInformation(
+                   "OrderRegistered event logged successfully. OrderId: {OrderId}, User: {User}, TokenAmount: {TokenAmount}, CampaignId: {CampaignId}, DiscountBps: {DiscountBps}, HasCampaign: {HasCampaign}, BlockNumber: {BlockNumber}, TxHash: {TxHash}",
+                   eventLog.Event.OrderId,
+                   eventLog.Event.User,
+                   eventLog.Event.TokenAmount,
+                   campaignIdHex ?? "None",
+                   eventLog.Event.DiscountBps,
+                   hasCampaign,
+                   block,
+                   log.TransactionHash);
+
+                var transactionLog = new OrderRegisteredLogData
+                {
+                    OrderId = eventLog.Event.OrderId,
+                    Hash = log.TransactionHash,
+                    Address = log.Address,
+                    UserWallet = eventLog.Event.User,
+                    Status = TransactionStatus.Confirmed,
+                    BlockNumber = block,
+                    EventType = BlockchainEventType.OrderRegistered,
+                    TokenAmount = eventLog.Event.TokenAmount,
+                    CampaignId = hasCampaign ? campaignIdHex : null,
+                    DiscountBps = hasCampaign ? eventLog.Event.DiscountBps : 0
+                };
+
+                await _transactionLogService.CreateOrderRegisteredTransactionLogAsync(transactionLog);
+
+                lock (_blockLock)
+                {
+                    _orderLastProcessedBlock = BigInteger.Max(_orderLastProcessedBlock, block);
+                }
+
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing OrderRegistered event for order {OrderId}. TxHash: {TxHash}",
+                    eventLog.Event.OrderId, log.TransactionHash);
+                throw;
+            }
+        }
+
         private async Task LogOrderExecutedEvent(EventLog<OrderExecutedEventDTO> eventLog, FilterLog log)
         {
+
+            _logger.LogInformation("Logged OrderExecuted event for order {OrderId}", eventLog.Event.OrderId);
 
             var block = (long)log.BlockNumber.Value;
             var transactionLog = new OrderExecutedLogData
@@ -211,17 +264,13 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                 UsdValue = 0,
             };
 
-            lock (_blockLock)
-            {
-                _orderLastProcessedBlock = BigInteger.Max(_orderLastProcessedBlock, block);
-            }
-
             await _transactionLogService.CreateOrderExecutedTransactionLogAsync(transactionLog);
-            _logger.LogInformation("Logged OrderExecuted event for order {OrderId}", eventLog.Event.OrderId);
         }
 
         private async Task LogOrderExpiredEvent(EventLog<OrderExpiredEventDTO> eventLog, FilterLog log)
         {
+
+            _logger.LogInformation("Logged OrderExpired event for order {OrderId}", eventLog.Event.OrderId);
 
             var block = (long)log.BlockNumber.Value;
             var transactionLog = new OrderExpiredLogData
@@ -235,9 +284,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                 EventType = BlockchainEventType.OrderExpired,
             };
 
-
             await _transactionLogService.CreateOrderExpiredTransactionLogAsync(transactionLog);
-            _logger.LogInformation("Logged OrderExpired event for order {OrderId}", eventLog.Event.OrderId);
         }
 
         private async Task<HexBigInteger> GetOrderLastProcessedBlock(CancellationToken cancellationToken)
@@ -286,6 +333,23 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             }
         }
 
+        private static string ByteArray32ToHex(byte[] bytes)
+        {
+            try
+            {
+                if (bytes == null)
+                    throw new ArgumentNullException(nameof(bytes));
+
+                if (bytes.Length != 32)
+                    throw new ArgumentException("Input must be exactly 32 bytes for bytes32");
+
+                return "0x" + bytes.ToHex();
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
         #endregion
 
 

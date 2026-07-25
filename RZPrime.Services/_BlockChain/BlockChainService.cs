@@ -370,16 +370,17 @@ public class BlockChainService : IBlockChainService, ISingletonDependency
         }
     }
 
-    public async Task<decimal> PreviewPaymentAmountAsync(string walletAddress, string orderId)
+    public async Task<BigInteger> PreviewPaymentAmountAsync(string walletAddress, string orderId)
     {
         try
         {
-            var validAddress = ValidateAndConvertToChecksumAddress(walletAddress);
+            //var validAddress = ValidateAndConvertToChecksumAddress(walletAddress);
 
             var function = _contract.GetFunction("previewPaymentAmount");
-            var rzusdAmountWei = await function.CallAsync<BigInteger>(validAddress, orderId);
+            var rzusdAmountWei = await function.CallAsync<BigInteger>(walletAddress, orderId);
 
-            return ConvertFromWei(rzusdAmountWei);
+            //return ConvertFromWei(rzusdAmountWei);
+            return rzusdAmountWei; 
         }
         catch (Exception ex)
         {

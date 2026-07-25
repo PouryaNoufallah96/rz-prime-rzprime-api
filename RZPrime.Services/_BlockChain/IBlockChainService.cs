@@ -22,6 +22,6 @@ namespace RZPrime.Services._BlockChain
         Task<TransactionResult> EditCampaignAsync(CreateCampaignOnBlockChainRequest request);
         Task<TransactionResult> RemoveCampaignAsync(string campaignReference);
         Task<TransactionResult> SetDiscountForAsync(string walletAddress, decimal discountPercentage);
-        Task<decimal> PreviewPaymentAmountAsync(string walletAddress, string orderId);
+        Task<BigInteger> PreviewPaymentAmountAsync(string walletAddress, string orderId);
     }
 }

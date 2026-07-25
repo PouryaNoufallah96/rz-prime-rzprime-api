@@ -31,7 +31,7 @@ namespace RZPrime.Api.Controllers.V1
         public bool SystemActivity { get; set; } = true;
         public string ActivityMessage { get; set; } = "All services is active.";
         //public string Message { get; set; } = "Please use the RZ Prime web application to submit new orders, apply changes or complete transactions.";
-        public string Message { get; set; } = null;
+        public string? Message { get; set; } = null;
 
         // remember : message in auth
         //To apply changes or complete transactions, please connect your wallet via WalletConnect in Settings.

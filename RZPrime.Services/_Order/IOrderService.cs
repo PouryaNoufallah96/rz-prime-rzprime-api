@@ -11,6 +11,8 @@ namespace RZPrime.Services._Order
         Task FindOrderToMakeDropAsync();
         Task SignDropsAsync();
 
+        Task<OrderResult> GetOrderDetailAsync(GetOrderDetailUpdate update, string walletAddress);
+
         //Task SyncOrderRegisteredData(string orderId,string campaignReference,decimal discount); 
 
 

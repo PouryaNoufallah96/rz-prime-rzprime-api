@@ -381,17 +381,20 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                 var campaignIdHex = ByteArray32ToHex(eventLog.Event.CampaignId);
                 var block = (long)log.BlockNumber.Value;
 
+                var hasCampaign = !string.IsNullOrEmpty(campaignIdHex) 
+                    && campaignIdHex != "0x0000000000000000000000000000000000000000000000000000000000000000"
+                    && eventLog.Event.DiscountBps > 0;
 
                 _logger.LogInformation(
-                   "OrderRegistered event logged successfully. OrderId: {OrderId}, User: {User}, TokenAmount: {TokenAmount}, CampaignId: {CampaignId}, DiscountBps: {DiscountBps}, BlockNumber: {BlockNumber}, TxHash: {TxHash}",
+                   "OrderRegistered event logged successfully. OrderId: {OrderId}, User: {User}, TokenAmount: {TokenAmount}, CampaignId: {CampaignId}, DiscountBps: {DiscountBps}, HasCampaign: {HasCampaign}, BlockNumber: {BlockNumber}, TxHash: {TxHash}",
                    eventLog.Event.OrderId,
                    eventLog.Event.User,
                    eventLog.Event.TokenAmount,
-                   campaignIdHex,
+                   campaignIdHex ?? "None",
                    eventLog.Event.DiscountBps,
+                   hasCampaign,
                    block,
                    log.TransactionHash);
-
 
                 var transactionLog = new OrderRegisteredLogData
                 {
@@ -403,8 +406,8 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                     BlockNumber = block,
                     EventType = BlockchainEventType.OrderRegistered,
                     TokenAmount = eventLog.Event.TokenAmount,
-                    CampaignId = campaignIdHex,
-                    DiscountBps = eventLog.Event.DiscountBps
+                    CampaignId = hasCampaign ? campaignIdHex : null,
+                    DiscountBps = hasCampaign ? eventLog.Event.DiscountBps : 0
                 };
 
                 await _transactionLogService.CreateOrderRegisteredTransactionLogAsync(transactionLog);

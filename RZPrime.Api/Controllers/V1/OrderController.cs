@@ -28,6 +28,16 @@ namespace RZPrime.Api.Controllers.V1
 
 
         [HttpPost("[action]")]
+        [Authorize(RequireActiveUser = false)]
+        [CustomRateLimit(maxAttemptsCount: 60)]
+        [SwaggerOperation(Summary = "Get order detail", Tags = ["Order"])] 
+        public async Task<OrderResult> GetOrderDetailAsync([FromBody] GetOrderDetailUpdate update)
+        {
+            return await _orderService.GetOrderDetailAsync(update, WalletAddress);
+        }
+
+
+        [HttpPost("[action]")]
         [Authorize]
         [CustomRateLimit(maxAttemptsCount:40)]
         [SwaggerOperation(Summary = "Submit order", Tags = ["Order"])]
@@ -40,7 +50,6 @@ namespace RZPrime.Api.Controllers.V1
         [HttpPost("[action]")]
         [CustomRateLimit(maxAttemptsCount: 40)]
         [Authorize]
-
         [SwaggerOperation(Summary = "Drop order", Tags = ["Order"])]
         public async Task<OrderResult> DropOrderAsync(DropOrderUpdate update)
         {
