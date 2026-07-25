@@ -76,7 +76,7 @@ namespace RZPrime.Api.Controllers.V1
         
         
         [HttpGet("[action]")]
-        [Authorize]
+        [Authorize(RequireActiveUser = false)]
         [CustomRateLimit(maxAttemptsCount: 60)]
         [SwaggerOperation(Summary = "Get campaign banner for a wallet", Tags = ["User-Campaign"])]
         public async Task<CampaignBannerResult> GetCampaignBannerDataAsync() 
