@@ -18,7 +18,9 @@ namespace RZPrime.Services._TransactionLog.DTOs.Updates
 
     public class OrderRegisteredLogData : CommonLogData
     {
-        public BigInteger TokenAmount { get; set; } 
+        public BigInteger TokenAmount { get; set; }
+        public string CampaignId { get; set; }
+        public BigInteger DiscountBps { get; set; }
     }
 
 

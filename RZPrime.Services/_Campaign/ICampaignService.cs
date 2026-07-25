@@ -7,10 +7,17 @@ namespace RZPrime.Services._Campaign
     public interface ICampaignService
     {
         Task<bool> CreateCampaignAsync(CreateCampaignUpdate createCampaignUpdate);
+        Task<bool> EditCampaignAsync(EditCampaignUpdate update);
         Task<bool> CancelCampaignAsync(CancelCampaignUpdate cancelCampaignUpdate);
         Task<CampaignListResult> GetAllCampaignsAsync(Pagination pagination);
         Task<List<Campaign>> GetAvailableCampaignsAsync();
-        Task<Campaign?> GetBestCampaignAsync(string walletAddress, string orderId, DateTime orderRegisteredMoment);
         Task FindCampaignForExpireAsync();
+        
+
+        Task<WalletDiscountResult> SetWalletDiscountAsync(SetWalletDiscountRequest request);
+        Task<WalletDiscountResult> CancelWalletDiscountAsync(CancelWalletDiscountRequest request);
+
+        Task<CampaignBannerResult> GetCampaignBannerAsync(string walletAddress);
+
     }
 }

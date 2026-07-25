@@ -207,7 +207,6 @@ namespace RZPrime.Services._Order
         /// <returns></returns>
         public async Task<OrderListResult> GetAllUserOrdersAsync(GetAllUserOrdersUpdate update, string userPublicKey, string walletAddress)
         {
-            var rzusdPrice = await _priceService.GetRZUSDPriceAsync();
 
             var pagination = update.Pagination;
 
@@ -230,7 +229,6 @@ namespace RZPrime.Services._Order
              .Take(pagination.Size)
              .ToListAsync();
 
-            await SyncOrdersWithCampaignAsync(orders);
 
             var result = orders.Select(order => new OrderResult
             {
@@ -254,17 +252,7 @@ namespace RZPrime.Services._Order
                 TokenName = order.TokenName,
                 TokenNetwork = order.TokenNetwork,
                 UserStageId = order.UserStageId,
-
-                // convert to rzusd
-                PayAmountInWei = order.State == OrderState.Registered
-                ? _blockChainService
-                    .ConvertToWei(
-                        ((decimal)order.FinalAmount *
-                         (1 - ((order.CampaignDiscount ?? 0) / 100)))
-                         / rzusdPrice)
-                    .ToString()
-                : order.PayAmountInWei,
-
+                PayAmountInWei = null,               
                 TokenAmountInWei = order.TokenAmountInWei,
                 TransactionsMetaData = order.TransactionsMetaData,
                 CampaignDiscount = order.CampaignDiscount,
@@ -280,38 +268,7 @@ namespace RZPrime.Services._Order
             };
         }
 
-        private async Task SyncOrdersWithCampaignAsync(List<Order> orders)
-        {
-            foreach (var order in orders)
-            {
-                if (order.State != OrderState.Registered)
-                    continue;
 
-                if (!string.IsNullOrEmpty(order.CampaignReference))
-                    continue;
-
-                var campaign = await _campaignService.GetBestCampaignAsync(
-                    order.WalletAddress,
-                    order.OrderId,
-                    order.CreatedMoment);
-
-                if (campaign == null)
-                    continue;
-
-                order.CampaignReference = campaign.CampaignReference;
-                order.CampaignDiscount = campaign.DiscountPercentage;
-
-                var orderCampaignFilter = Builders<Order>.Filter.Eq(
-                 x => x.Id,
-                 order.Id);
-
-                var orderCampaignUpdate = Builders<Order>.Update
-                    .Set(x => x.CampaignReference, campaign.CampaignReference)
-                    .Set(x => x.CampaignDiscount, campaign.DiscountPercentage);
-
-                await _orderRepository.FindOneAndUpdateAsync(orderCampaignFilter, orderCampaignUpdate);
-            }
-        }
 
 
         /// <summary>
@@ -385,7 +342,40 @@ namespace RZPrime.Services._Order
         }
 
 
-        
+
+        //public async Task SyncOrderRegisteredData(string orderId, string campaignReference, decimal discount)
+        //{
+        //    if (discount <= 0)
+        //    {
+        //        _logger.LogInformation("Order {OrderId} has no discount. Campaign sync skipped.", orderId);
+        //        return;
+        //    }
+
+        //    try
+        //    {
+        //        var updateDefinition = Builders<Order>.Update
+        //            .Set(x => x.CampaignReference, campaignReference)
+        //            .Set(x => x.CampaignDiscount, discount);
+
+        //        var result = await _orderRepository.FindOneAndUpdateAsync(
+        //            filter: x => x.OrderId == orderId,
+        //            update: updateDefinition);
+
+        //        _logger.LogInformation(
+        //            "Order {OrderId} synced successfully. Campaign: {CampaignReference}, Discount: {Discount}%",
+        //            orderId, campaignReference, discount);
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        _logger.LogError(ex,
+        //            "Failed to sync order campaign data. OrderId: {OrderId}, Campaign: {CampaignReference}, Discount: {Discount}",
+        //            orderId, campaignReference, discount);
+        //        throw;
+        //    }
+        //}
+
+
+
 
         #region PRIVATE METHODS
 
@@ -580,7 +570,131 @@ namespace RZPrime.Services._Order
                 .SumAsync(q => q.TokenAmount);
         }
 
+       
+
         #endregion
 
     }
 }
+
+//private async Task SyncOrdersWithCampaignAsync(List<Order> orders)
+//{
+//    foreach (var order in orders)
+//    {
+//        if (order.State != OrderState.Registered)
+//            continue;
+
+//        if (!string.IsNullOrEmpty(order.CampaignReference))
+//            continue;
+
+//        var campaign = await _campaignService.GetBestCampaignAsync(
+//            order.WalletAddress,
+//            order.OrderId,
+//            order.CreatedMoment);
+
+//        if (campaign == null)
+//            continue;
+
+//        order.CampaignReference = campaign.CampaignReference;
+//        order.CampaignDiscount = campaign.DiscountPercentage;
+
+//        var orderCampaignFilter = Builders<Order>.Filter.Eq(
+//         x => x.Id,
+//         order.Id);
+
+//        var orderCampaignUpdate = Builders<Order>.Update
+//            .Set(x => x.CampaignReference, campaign.CampaignReference)
+//            .Set(x => x.CampaignDiscount, campaign.DiscountPercentage);
+
+//        await _orderRepository.FindOneAndUpdateAsync(orderCampaignFilter, orderCampaignUpdate);
+//    }
+//}
+
+
+
+
+
+
+  ///// <summary>
+        ///// this method use for get all of orders for user
+        ///// </summary>
+        ///// <param name="pagination"></param>
+        ///// <param name="userPublicKey"></param>
+        ///// <param name="walletAddress"></param>
+        ///// <returns></returns>
+        //public async Task<OrderListResult> GetAllUserOrdersAsync(GetAllUserOrdersUpdate update, string userPublicKey, string walletAddress)
+        //{
+        //    var rzusdPrice = await _priceService.GetRZUSDPriceAsync();
+
+        //    var pagination = update.Pagination;
+
+        //    var skip = (pagination.Page - 1) * pagination.Size;
+
+        //    var query = _orderRepository.AsQueryable();
+
+        //    if (update.States != null && update.States.Count > 0)
+        //    {
+        //        query = query.Where(q => update.States.Contains(q.State));
+        //    }
+
+        //    var totalCount = await query
+        //        .CountAsync(x => x.WalletAddress.ToLower() == walletAddress.ToLower());
+
+        //    var orders = await query
+        //     .Where(x => x.WalletAddress.ToLower() == walletAddress.ToLower())
+        //     .OrderByDescending(x => x.CreatedMoment)
+        //     .Skip(skip)
+        //     .Take(pagination.Size)
+        //     .ToListAsync();
+
+        //    await SyncOrdersWithCampaignAsync(orders);
+
+        //    var result = orders.Select(order => new OrderResult
+        //    {
+        //        CreatedMoment = order.CreatedMoment,
+        //        ModifiedMoment = order.ModifiedMoment,
+        //        OrderId = order.OrderId,
+        //        State = order.State,
+        //        WalletAddress = walletAddress,
+        //        ChangeStateMoment = order.ChangeStateMoment,
+        //        FinalAmount = order.FinalAmount,
+        //        LoanAmount = order.LoanAmount,
+        //        LoanInterestAmount = order.LoanInterestAmount,
+        //        MonthDuration = order.MonthDuration,
+        //        PayOffDate = order.PayOffDate,
+        //        ProfitRatePerMonth = order.ProfitRatePerMonth,
+        //        Promotion = order.Promotion,
+        //        Quantity = order.TokenAmount,
+        //        Stage = order.Stage,
+        //        TokenAddress = order.TokenAddress,
+        //        TokenEffectivePrice = order.TokenEffectivePrice,
+        //        TokenName = order.TokenName,
+        //        TokenNetwork = order.TokenNetwork,
+        //        UserStageId = order.UserStageId,
+
+        //        // convert to rzusd
+        //        PayAmountInWei = order.State == OrderState.Registered
+        //        ? _blockChainService
+        //            .ConvertToWei(
+        //                ((decimal)order.FinalAmount *
+        //                 (1 - ((order.CampaignDiscount ?? 0) / 100)))
+        //                 / rzusdPrice)
+        //            .ToString()
+        //        : order.PayAmountInWei,
+
+        //        TokenAmountInWei = order.TokenAmountInWei,
+        //        TransactionsMetaData = order.TransactionsMetaData,
+        //        CampaignDiscount = order.CampaignDiscount,
+        //    }).ToList();
+
+        //    var pageCount = (int)Math.Ceiling((double)totalCount / pagination.Size);
+
+        //    return new OrderListResult
+        //    {
+        //        Data = result,
+        //        TotalCount = totalCount,
+        //        PageCount = pageCount
+        //    };
+        //}
+
+

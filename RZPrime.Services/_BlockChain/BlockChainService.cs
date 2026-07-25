@@ -20,6 +20,7 @@ using RZPrime.Utilities.Exceptions.Common;
 using RZPrime.Utilities.Extension;
 using System.Numerics;
 using System.Reactive.Linq;
+using System.Text;
 using static RZPrime.Utilities.Constants.RegisterMode;
 
 public class BlockChainService : IBlockChainService, ISingletonDependency
@@ -56,7 +57,7 @@ public class BlockChainService : IBlockChainService, ISingletonDependency
 
 
     #region Transactional Methods
-    
+
     public async Task<TransactionResult> RegisterOrderOnBlockChainAsync(Order order)
     {
         var tokenData = ValidateToken(order.TokenName);
@@ -198,6 +199,232 @@ public class BlockChainService : IBlockChainService, ISingletonDependency
 
 
 
+    #region Campaign Methods
+
+    public async Task<TransactionResult> CreateCampaignAsync(CreateCampaignOnBlockChainRequest request)
+    {
+        try
+        {
+            var campaignId = HexToByteArray32(request.CampaignReference);
+            var startAt = new DateTimeOffset(request.FromOrderRegisterTime, TimeSpan.Zero).ToUnixTimeSeconds();
+            var endAt = new DateTimeOffset(request.ToOrderRegisterTime, TimeSpan.Zero).ToUnixTimeSeconds();
+            var maxUsers = new BigInteger(request.MaxUsers);
+            var minUsdValue = ConvertToWei(request.MinUSDValue);
+            var maxUsdValue = ConvertToWei(request.MaxUSDValue);
+            var discountBps = ConvertPercentageToBps(request.DiscountPercentage);
+
+            var function = _contract.GetFunction("createCampaign");
+            var gasPrice = await GetOptimalGasPriceAsync();
+            var gas = new HexBigInteger(_settings.GetDefaultGasLimit());
+
+            var receipt = await function.SendTransactionAndWaitForReceiptAsync(
+                from: _account.Address,
+                gas: gas,
+                gasPrice: new HexBigInteger(gasPrice),
+                value: new HexBigInteger(0),
+                functionInput: new object[] { campaignId, (BigInteger)startAt, (BigInteger)endAt, maxUsers, minUsdValue, maxUsdValue, discountBps, request.FirstOrder }
+            );
+
+            if (receipt.Status.Value == 1)
+            {
+                _logger.LogInformation("Campaign {CampaignRef} created. TxHash: {TxHash}", request.CampaignReference, receipt.TransactionHash);
+                return new TransactionResult { Success = true, TransactionHash = receipt.TransactionHash };
+            }
+
+            _logger.LogError("Campaign {CampaignRef} creation failed (reverted). TxHash: {TxHash}", request.CampaignReference, receipt.TransactionHash);
+            return new TransactionResult { Success = false, TransactionHash = receipt.TransactionHash, ErrorMessage = "Transaction failed on blockchain (reverted)." };
+        }
+        catch (SmartContractRevertException revertEx)
+        {
+            _logger.LogError(revertEx, "Contract revert while creating campaign {CampaignRef}: {Message}", request.CampaignReference, revertEx.Message);
+            return new TransactionResult { Success = false, ErrorMessage = $"Contract revert: {revertEx.Message}" };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error while creating campaign {CampaignRef}", request.CampaignReference);
+            return new TransactionResult { Success = false, ErrorMessage = ex.Message };
+        }
+    }
+   
+    public async Task<TransactionResult> RemoveCampaignAsync(string campaignReference)
+    {
+        try
+        {
+            var campaignId = HexToByteArray32(campaignReference);
+
+            var function = _contract.GetFunction("removeCampaign");
+            var gasPrice = await GetOptimalGasPriceAsync();
+            var gas = new HexBigInteger(_settings.GetDefaultGasLimit());
+
+            var receipt = await function.SendTransactionAndWaitForReceiptAsync(
+                from: _account.Address,
+                gas: gas,
+                gasPrice: new HexBigInteger(gasPrice),
+                value: new HexBigInteger(0),
+                functionInput: new object[] { campaignId }
+            );
+
+            if (receipt.Status.Value == 1)
+            {
+                _logger.LogInformation("Campaign {CampaignRef} removed. TxHash: {TxHash}", campaignReference, receipt.TransactionHash);
+                return new TransactionResult { Success = true, TransactionHash = receipt.TransactionHash };
+            }
+
+            _logger.LogError("Campaign {CampaignRef} removal failed (reverted). TxHash: {TxHash}", campaignReference, receipt.TransactionHash);
+            return new TransactionResult { Success = false, TransactionHash = receipt.TransactionHash, ErrorMessage = "Transaction failed on blockchain (reverted)." };
+        }
+        catch (SmartContractRevertException revertEx)
+        {
+            _logger.LogError(revertEx, "Contract revert while removing campaign {CampaignRef}: {Message}", campaignReference, revertEx.Message);
+            return new TransactionResult { Success = false, ErrorMessage = $"Contract revert: {revertEx.Message}" };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error while removing campaign {CampaignRef}", campaignReference);
+            return new TransactionResult { Success = false, ErrorMessage = ex.Message };
+        }
+    }
+    
+    public async Task<TransactionResult> EditCampaignAsync(CreateCampaignOnBlockChainRequest request)
+    {
+        try
+        {
+            var campaignId = HexToByteArray32(request.CampaignReference);
+            var startAt = new DateTimeOffset(request.FromOrderRegisterTime, TimeSpan.Zero).ToUnixTimeSeconds();
+            var endAt = new DateTimeOffset(request.ToOrderRegisterTime, TimeSpan.Zero).ToUnixTimeSeconds();
+            var maxUsers = new BigInteger(request.MaxUsers);
+            var minUsdValue = ConvertToWei(request.MinUSDValue);
+            var maxUsdValue = ConvertToWei(request.MaxUSDValue);
+            var discountBps = ConvertPercentageToBps(request.DiscountPercentage);
+
+            var function = _contract.GetFunction("editCampaign");
+            var gasPrice = await GetOptimalGasPriceAsync();
+            var gas = new HexBigInteger(_settings.GetDefaultGasLimit());
+
+            var receipt = await function.SendTransactionAndWaitForReceiptAsync(
+                from: _account.Address,
+                gas: gas,
+                gasPrice: new HexBigInteger(gasPrice),
+                value: new HexBigInteger(0),
+                functionInput: new object[] { campaignId, (BigInteger)startAt, (BigInteger)endAt, maxUsers, minUsdValue, maxUsdValue, discountBps, request.FirstOrder }
+            );
+
+            if (receipt.Status.Value == 1)
+            {
+                _logger.LogInformation("Campaign {CampaignRef} edited. TxHash: {TxHash}", request.CampaignReference, receipt.TransactionHash);
+                return new TransactionResult { Success = true, TransactionHash = receipt.TransactionHash, BlockNumber = receipt.BlockNumber.Value, GasUsed = receipt.GasUsed.Value };
+            }
+
+            _logger.LogError("Campaign {CampaignRef} edit failed (reverted). TxHash: {TxHash}", request.CampaignReference, receipt.TransactionHash);
+            return new TransactionResult { Success = false, TransactionHash = receipt.TransactionHash, ErrorMessage = "Transaction failed on blockchain (reverted)." };
+        }
+        catch (SmartContractRevertException revertEx)
+        {
+            _logger.LogError(revertEx, "Contract revert while editing campaign {CampaignRef}: {Message}", request.CampaignReference, revertEx.Message);
+            return new TransactionResult { Success = false, ErrorMessage = $"Contract revert: {revertEx.Message}" };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error while editing campaign {CampaignRef}", request.CampaignReference);
+            return new TransactionResult { Success = false, ErrorMessage = ex.Message };
+        }
+    }
+
+    public async Task<TransactionResult> SetDiscountForAsync(string walletAddress, decimal discountPercentage)
+    {
+        try
+        {
+            var validAddress = ValidateAndConvertToChecksumAddress(walletAddress);
+            var discountBps = ConvertPercentageToBps(discountPercentage);
+
+            var function = _contract.GetFunction("setDiscountFor");
+            var gasPrice = await GetOptimalGasPriceAsync();
+            var gas = new HexBigInteger(_settings.GetDefaultGasLimit());
+
+            var receipt = await function.SendTransactionAndWaitForReceiptAsync(
+                from: _account.Address,
+                gas: gas,
+                gasPrice: new HexBigInteger(gasPrice),
+                value: new HexBigInteger(0),
+                functionInput: new object[] { validAddress, discountBps }
+            );
+
+            if (receipt.Status.Value == 1)
+            {
+                _logger.LogInformation("Discount set for wallet {Wallet}: {Discount}%. TxHash: {TxHash}", walletAddress, discountPercentage, receipt.TransactionHash);
+                return new TransactionResult { Success = true, TransactionHash = receipt.TransactionHash, BlockNumber = receipt.BlockNumber.Value, GasUsed = receipt.GasUsed.Value };
+            }
+
+            _logger.LogError("SetDiscountFor wallet {Wallet} failed (reverted). TxHash: {TxHash}", walletAddress, receipt.TransactionHash);
+            return new TransactionResult { Success = false, TransactionHash = receipt.TransactionHash, ErrorMessage = "Transaction failed on blockchain (reverted)." };
+        }
+        catch (SmartContractRevertException revertEx)
+        {
+            _logger.LogError(revertEx, "Contract revert while setting discount for {Wallet}: {Message}", walletAddress, revertEx.Message);
+            return new TransactionResult { Success = false, ErrorMessage = $"Contract revert: {revertEx.Message}" };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error while setting discount for {Wallet}", walletAddress);
+            return new TransactionResult { Success = false, ErrorMessage = ex.Message };
+        }
+    }
+
+    public async Task<decimal> PreviewPaymentAmountAsync(string walletAddress, string orderId)
+    {
+        try
+        {
+            var validAddress = ValidateAndConvertToChecksumAddress(walletAddress);
+
+            var function = _contract.GetFunction("previewPaymentAmount");
+            var rzusdAmountWei = await function.CallAsync<BigInteger>(validAddress, orderId);
+
+            return ConvertFromWei(rzusdAmountWei);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error previewing payment amount for wallet {Wallet}, orderId {OrderId}", walletAddress, orderId);
+            throw;
+        }
+    }
+
+    #endregion
+
+
+
+    #region Campaign Utility Methods
+
+
+
+    public static byte[] HexToByteArray32(string hex)
+    {
+        if (string.IsNullOrEmpty(hex))
+            throw new ArgumentException("Hex string is null or empty");
+
+        var bytes = Nethereum.Hex.HexConvertors.Extensions.HexByteConvertorExtensions.HexToByteArray(hex);
+
+        if (bytes.Length > 32)
+            throw new ArgumentException("Hex string is too long for bytes32");
+
+        var padded = new byte[32];
+        Array.Copy(bytes, 0, padded, 32 - bytes.Length, bytes.Length);
+
+        return padded;
+    }
+
+
+    /// <summary>
+    /// Converts a percentage (e.g. 5.5 for 5.5%) to basis points (e.g. 550).
+    /// </summary>
+    private static BigInteger ConvertPercentageToBps(decimal percentage)
+    {
+        return new BigInteger((int)(percentage * 100));
+    }
+
+    #endregion
+
+
+
     #region Balance methods
 
     public async Task<Dictionary<string, decimal>> GetBalancesMultiCallAsync()
@@ -303,12 +530,12 @@ public class BlockChainService : IBlockChainService, ISingletonDependency
 
             var balance = await balanceOf.CallAsync<BigInteger>(_settings.ContractAddress);
             var tokenBalance = UnitConversion.Convert.FromWei(balance, tokenData.PriceDecimalPlaces);
-            return  tokenBalance;
+            return tokenBalance;
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error getting balance for {tokenData.Name}: {ex.Message}");
-            return  0;
+            return 0;
         }
     }
 
@@ -316,8 +543,8 @@ public class BlockChainService : IBlockChainService, ISingletonDependency
 
 
 
-   
-    
+
+
     #region Utility Methods (Unchanged)
     public BigInteger ConvertToWei(decimal amount, int decimals = 18)
     {

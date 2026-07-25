@@ -18,7 +18,6 @@ namespace RZPrime.Api.Controllers.V1
     public class CampaignController(ICampaignService _campaignService) : ApiBaseController
     {
 
-
         [HttpGet("[action]")]
         [Authorize(Permissions.Campaign)]
         [CustomRateLimit(maxAttemptsCount: 60)]
@@ -45,6 +44,47 @@ namespace RZPrime.Api.Controllers.V1
         {
             return await _campaignService.CancelCampaignAsync(cancelCampaignUpdate);
         }
+
+        [HttpPost("[action]")]
+        [Authorize(Permissions.Campaign)]
+        [CustomRateLimit(maxAttemptsCount: 60)]
+        [SwaggerOperation(Summary = "Edit an existing campaign", Tags = ["Campaign"])]
+        public async Task<bool> EditCampaignAsync(EditCampaignUpdate editCampaignUpdate)
+        {
+            return await _campaignService.EditCampaignAsync(editCampaignUpdate);
+        }
+
+
+
+        [HttpPost("[action]")]
+        [Authorize(Permissions.Campaign)]
+        [CustomRateLimit(maxAttemptsCount: 60)]
+        [SwaggerOperation(Summary = "Set a wallet discount", Tags = ["Campaign"])]
+        public async Task<WalletDiscountResult> SetWalletDiscountAsync(SetWalletDiscountRequest request)
+        {
+            return await _campaignService.SetWalletDiscountAsync(request);
+        }
+
+        [HttpPost("[action]")]
+        [Authorize(Permissions.Campaign)]
+        [CustomRateLimit(maxAttemptsCount: 60)]
+        [SwaggerOperation(Summary = "Cancel a wallet discount", Tags = ["Campaign"])]
+        public async Task<WalletDiscountResult> CancelWalletDiscountAsync(CancelWalletDiscountRequest request)
+        {
+            return await _campaignService.CancelWalletDiscountAsync(request);
+        }
+        
+        
+        [HttpGet("[action]")]
+        [Authorize]
+        [CustomRateLimit(maxAttemptsCount: 60)]
+        [SwaggerOperation(Summary = "Get campaign banner for a wallet", Tags = ["User-Campaign"])]
+        public async Task<CampaignBannerResult> GetCampaignBannerDataAsync() 
+        {
+            return await _campaignService.GetCampaignBannerAsync(WalletAddress);
+        }
+
+
 
     }
 }

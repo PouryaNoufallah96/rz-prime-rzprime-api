@@ -6,13 +6,13 @@
     [
     {
         ""type"": ""function"",
-        ""name"": ""ORACLE"",
+        ""name"": ""activeCampaignId"",
         ""inputs"": [],
         ""outputs"": [
             {
                 ""name"": """",
-                ""type"": ""address"",
-                ""internalType"": ""contract IRZUSDTwapOracle""
+                ""type"": ""bytes32"",
+                ""internalType"": ""bytes32""
             }
         ],
         ""stateMutability"": ""view""
@@ -60,6 +60,54 @@
     },
     {
         ""type"": ""function"",
+        ""name"": ""createCampaign"",
+        ""inputs"": [
+            {
+                ""name"": ""campaignId"",
+                ""type"": ""bytes32"",
+                ""internalType"": ""bytes32""
+            },
+            {
+                ""name"": ""startAt"",
+                ""type"": ""uint256"",
+                ""internalType"": ""uint256""
+            },
+            {
+                ""name"": ""endAt"",
+                ""type"": ""uint256"",
+                ""internalType"": ""uint256""
+            },
+            {
+                ""name"": ""maxUsers"",
+                ""type"": ""uint256"",
+                ""internalType"": ""uint256""
+            },
+            {
+                ""name"": ""minUsdValue"",
+                ""type"": ""uint256"",
+                ""internalType"": ""uint256""
+            },
+            {
+                ""name"": ""maxUsdValue"",
+                ""type"": ""uint256"",
+                ""internalType"": ""uint256""
+            },
+            {
+                ""name"": ""discountBps"",
+                ""type"": ""uint256"",
+                ""internalType"": ""uint256""
+            },
+            {
+                ""name"": ""firstOrder"",
+                ""type"": ""bool"",
+                ""internalType"": ""bool""
+            }
+        ],
+        ""outputs"": [],
+        ""stateMutability"": ""nonpayable""
+    },
+    {
+        ""type"": ""function"",
         ""name"": ""dropOrderBySig"",
         ""inputs"": [
             {
@@ -76,6 +124,54 @@
                 ""name"": ""signature"",
                 ""type"": ""bytes"",
                 ""internalType"": ""bytes""
+            }
+        ],
+        ""outputs"": [],
+        ""stateMutability"": ""nonpayable""
+    },
+    {
+        ""type"": ""function"",
+        ""name"": ""editCampaign"",
+        ""inputs"": [
+            {
+                ""name"": ""campaignId"",
+                ""type"": ""bytes32"",
+                ""internalType"": ""bytes32""
+            },
+            {
+                ""name"": ""startAt"",
+                ""type"": ""uint256"",
+                ""internalType"": ""uint256""
+            },
+            {
+                ""name"": ""endAt"",
+                ""type"": ""uint256"",
+                ""internalType"": ""uint256""
+            },
+            {
+                ""name"": ""maxUsers"",
+                ""type"": ""uint256"",
+                ""internalType"": ""uint256""
+            },
+            {
+                ""name"": ""minUsdValue"",
+                ""type"": ""uint256"",
+                ""internalType"": ""uint256""
+            },
+            {
+                ""name"": ""maxUsdValue"",
+                ""type"": ""uint256"",
+                ""internalType"": ""uint256""
+            },
+            {
+                ""name"": ""discountBps"",
+                ""type"": ""uint256"",
+                ""internalType"": ""uint256""
+            },
+            {
+                ""name"": ""firstOrder"",
+                ""type"": ""bool"",
+                ""internalType"": ""bool""
             }
         ],
         ""outputs"": [],
@@ -114,6 +210,77 @@
     },
     {
         ""type"": ""function"",
+        ""name"": ""getCampaign"",
+        ""inputs"": [
+            {
+                ""name"": ""campaignId"",
+                ""type"": ""bytes32"",
+                ""internalType"": ""bytes32""
+            }
+        ],
+        ""outputs"": [
+            {
+                ""name"": """",
+                ""type"": ""tuple"",
+                ""internalType"": ""struct RZPrimeStorage.Campaign"",
+                ""components"": [
+                    {
+                        ""name"": ""startAt"",
+                        ""type"": ""uint256"",
+                        ""internalType"": ""uint256""
+                    },
+                    {
+                        ""name"": ""endAt"",
+                        ""type"": ""uint256"",
+                        ""internalType"": ""uint256""
+                    },
+                    {
+                        ""name"": ""maxUsers"",
+                        ""type"": ""uint256"",
+                        ""internalType"": ""uint256""
+                    },
+                    {
+                        ""name"": ""claimed"",
+                        ""type"": ""uint256"",
+                        ""internalType"": ""uint256""
+                    },
+                    {
+                        ""name"": ""minUsdValue"",
+                        ""type"": ""uint256"",
+                        ""internalType"": ""uint256""
+                    },
+                    {
+                        ""name"": ""maxUsdValue"",
+                        ""type"": ""uint256"",
+                        ""internalType"": ""uint256""
+                    },
+                    {
+                        ""name"": ""discountBps"",
+                        ""type"": ""uint256"",
+                        ""internalType"": ""uint256""
+                    },
+                    {
+                        ""name"": ""firstOrder"",
+                        ""type"": ""bool"",
+                        ""internalType"": ""bool""
+                    },
+                    {
+                        ""name"": ""exists"",
+                        ""type"": ""bool"",
+                        ""internalType"": ""bool""
+                    },
+                    {
+                        ""name"": ""removed"",
+                        ""type"": ""bool"",
+                        ""internalType"": ""bool""
+                    }
+                ]
+            }
+        ],
+        ""stateMutability"": ""view""
+    },
+    {
+        ""type"": ""function"",
         ""name"": ""getOrder"",
         ""inputs"": [
             {
@@ -131,7 +298,7 @@
             {
                 ""name"": """",
                 ""type"": ""tuple"",
-                ""internalType"": ""struct RZPrime.Order"",
+                ""internalType"": ""struct RZPrimeStorage.Order"",
                 ""components"": [
                     {
                         ""name"": ""buyToken"",
@@ -149,6 +316,11 @@
                         ""internalType"": ""uint256""
                     },
                     {
+                        ""name"": ""discountBps"",
+                        ""type"": ""uint256"",
+                        ""internalType"": ""uint256""
+                    },
+                    {
                         ""name"": ""endAt"",
                         ""type"": ""uint256"",
                         ""internalType"": ""uint256""
@@ -156,22 +328,9 @@
                     {
                         ""name"": ""status"",
                         ""type"": ""uint8"",
-                        ""internalType"": ""enum RZPrime.OrderStatus""
+                        ""internalType"": ""enum RZPrimeStorage.OrderStatus""
                     }
                 ]
-            }
-        ],
-        ""stateMutability"": ""view""
-    },
-    {
-        ""type"": ""function"",
-        ""name"": ""operator"",
-        ""inputs"": [],
-        ""outputs"": [
-            {
-                ""name"": """",
-                ""type"": ""address"",
-                ""internalType"": ""address""
             }
         ],
         ""stateMutability"": ""view""
@@ -208,6 +367,11 @@
                 ""internalType"": ""uint256""
             },
             {
+                ""name"": ""discountBps"",
+                ""type"": ""uint256"",
+                ""internalType"": ""uint256""
+            },
+            {
                 ""name"": ""endAt"",
                 ""type"": ""uint256"",
                 ""internalType"": ""uint256""
@@ -215,20 +379,26 @@
             {
                 ""name"": ""status"",
                 ""type"": ""uint8"",
-                ""internalType"": ""enum RZPrime.OrderStatus""
+                ""internalType"": ""enum RZPrimeStorage.OrderStatus""
             }
         ],
         ""stateMutability"": ""view""
     },
     {
         ""type"": ""function"",
-        ""name"": ""paused"",
-        ""inputs"": [],
+        ""name"": ""premiumDiscountBps"",
+        ""inputs"": [
+            {
+                ""name"": ""wallet"",
+                ""type"": ""address"",
+                ""internalType"": ""address""
+            }
+        ],
         ""outputs"": [
             {
-                ""name"": """",
-                ""type"": ""bool"",
-                ""internalType"": ""bool""
+                ""name"": ""bps"",
+                ""type"": ""uint256"",
+                ""internalType"": ""uint256""
             }
         ],
         ""stateMutability"": ""view""
@@ -297,35 +467,157 @@
     },
     {
         ""type"": ""function"",
-        ""name"": ""reservedTokenAmounts"",
+        ""name"": ""removeCampaign"",
         ""inputs"": [
             {
-                ""name"": ""token"",
-                ""type"": ""address"",
-                ""internalType"": ""address""
+                ""name"": ""campaignId"",
+                ""type"": ""bytes32"",
+                ""internalType"": ""bytes32""
             }
         ],
-        ""outputs"": [
+        ""outputs"": [],
+        ""stateMutability"": ""nonpayable""
+    },
+    {
+        ""type"": ""function"",
+        ""name"": ""setDiscountFor"",
+        ""inputs"": [
             {
-                ""name"": ""amounts"",
+                ""name"": ""wallet"",
+                ""type"": ""address"",
+                ""internalType"": ""address""
+            },
+            {
+                ""name"": ""bps"",
                 ""type"": ""uint256"",
                 ""internalType"": ""uint256""
             }
         ],
-        ""stateMutability"": ""view""
+        ""outputs"": [],
+        ""stateMutability"": ""nonpayable""
     },
     {
-        ""type"": ""function"",
-        ""name"": ""vault"",
-        ""inputs"": [],
-        ""outputs"": [
+        ""type"": ""event"",
+        ""name"": ""CampaignCreated"",
+        ""inputs"": [
             {
-                ""name"": """",
-                ""type"": ""address"",
-                ""internalType"": ""address""
+                ""name"": ""campaignId"",
+                ""type"": ""bytes32"",
+                ""indexed"": false,
+                ""internalType"": ""bytes32""
+            },
+            {
+                ""name"": ""startAt"",
+                ""type"": ""uint256"",
+                ""indexed"": false,
+                ""internalType"": ""uint256""
+            },
+            {
+                ""name"": ""endAt"",
+                ""type"": ""uint256"",
+                ""indexed"": false,
+                ""internalType"": ""uint256""
+            },
+            {
+                ""name"": ""maxUsers"",
+                ""type"": ""uint256"",
+                ""indexed"": false,
+                ""internalType"": ""uint256""
+            },
+            {
+                ""name"": ""minUsdValue"",
+                ""type"": ""uint256"",
+                ""indexed"": false,
+                ""internalType"": ""uint256""
+            },
+            {
+                ""name"": ""maxUsdValue"",
+                ""type"": ""uint256"",
+                ""indexed"": false,
+                ""internalType"": ""uint256""
+            },
+            {
+                ""name"": ""discountBps"",
+                ""type"": ""uint256"",
+                ""indexed"": false,
+                ""internalType"": ""uint256""
+            },
+            {
+                ""name"": ""firstOrder"",
+                ""type"": ""bool"",
+                ""indexed"": false,
+                ""internalType"": ""bool""
             }
         ],
-        ""stateMutability"": ""view""
+        ""anonymous"": false
+    },
+    {
+        ""type"": ""event"",
+        ""name"": ""CampaignEdited"",
+        ""inputs"": [
+            {
+                ""name"": ""campaignId"",
+                ""type"": ""bytes32"",
+                ""indexed"": false,
+                ""internalType"": ""bytes32""
+            },
+            {
+                ""name"": ""startAt"",
+                ""type"": ""uint256"",
+                ""indexed"": false,
+                ""internalType"": ""uint256""
+            },
+            {
+                ""name"": ""endAt"",
+                ""type"": ""uint256"",
+                ""indexed"": false,
+                ""internalType"": ""uint256""
+            },
+            {
+                ""name"": ""maxUsers"",
+                ""type"": ""uint256"",
+                ""indexed"": false,
+                ""internalType"": ""uint256""
+            },
+            {
+                ""name"": ""minUsdValue"",
+                ""type"": ""uint256"",
+                ""indexed"": false,
+                ""internalType"": ""uint256""
+            },
+            {
+                ""name"": ""maxUsdValue"",
+                ""type"": ""uint256"",
+                ""indexed"": false,
+                ""internalType"": ""uint256""
+            },
+            {
+                ""name"": ""discountBps"",
+                ""type"": ""uint256"",
+                ""indexed"": false,
+                ""internalType"": ""uint256""
+            },
+            {
+                ""name"": ""firstOrder"",
+                ""type"": ""bool"",
+                ""indexed"": false,
+                ""internalType"": ""bool""
+            }
+        ],
+        ""anonymous"": false
+    },
+    {
+        ""type"": ""event"",
+        ""name"": ""CampaignRemoved"",
+        ""inputs"": [
+            {
+                ""name"": ""campaignId"",
+                ""type"": ""bytes32"",
+                ""indexed"": false,
+                ""internalType"": ""bytes32""
+            }
+        ],
+        ""anonymous"": false
     },
     {
         ""type"": ""event"",
@@ -417,32 +709,37 @@
                 ""type"": ""uint256"",
                 ""indexed"": false,
                 ""internalType"": ""uint256""
+            },
+            {
+                ""name"": ""campaignId"",
+                ""type"": ""bytes32"",
+                ""indexed"": false,
+                ""internalType"": ""bytes32""
+            },
+            {
+                ""name"": ""discountBps"",
+                ""type"": ""uint256"",
+                ""indexed"": false,
+                ""internalType"": ""uint256""
             }
         ],
         ""anonymous"": false
     },
     {
         ""type"": ""event"",
-        ""name"": ""Paused"",
+        ""name"": ""PremiumDiscountSet"",
         ""inputs"": [
             {
-                ""name"": ""account"",
+                ""name"": ""wallet"",
                 ""type"": ""address"",
                 ""indexed"": false,
                 ""internalType"": ""address""
-            }
-        ],
-        ""anonymous"": false
-    },
-    {
-        ""type"": ""event"",
-        ""name"": ""Unpaused"",
-        ""inputs"": [
+            },
             {
-                ""name"": ""account"",
-                ""type"": ""address"",
+                ""name"": ""bps"",
+                ""type"": ""uint256"",
                 ""indexed"": false,
-                ""internalType"": ""address""
+                ""internalType"": ""uint256""
             }
         ],
         ""anonymous"": false

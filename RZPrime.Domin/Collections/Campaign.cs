@@ -8,34 +8,32 @@ namespace RZPrime.Domain.Collections
     public class Campaign : BaseDocument
     {
         public string CampaignReference { get; set; }
+        public DateTime FromOrderRegisterTime { get; set; }  //start at 
+        public DateTime ToOrderRegisterTime { get; set; } // end at
+        public int MaxUsers { get; set; } = 0;
+        public decimal MinUSDValue { get; set; }
+        public decimal MaxUSDValue { get; set; }
+        public decimal DiscountPercentage { get; set; } //0 -100
+        public bool FirstOrder { get; set; } = false;
 
         public CampaignState State { get; set; }
-        public CampaignType Type { get; set; }
-        public decimal DiscountPercentage { get; set; } //0 -100
-
-
-        //for time based campaigns
-        public DateTime? FromOrderRegisterTime { get; set; } = null;
-        public DateTime? ToOrderRegisterTime { get; set; } = null;
-
-        public DateTime ExpireMoment { get; set; } 
-
-        //for ref based campaigns
-        public List<string> Orders { get; set; } = null;
-        public List<string> Wallets { get; set; } = null;
-
 
         public string RegisterHash { get; set; }
         public DateTime? RegisterMoment { get; set; } = null;
+         
+        public string RemoveHash { get; set; }
+        public DateTime? RemoveMoment { get; set; } = null;
 
-        public string CancelHash { get; set; }
-        public DateTime? CancelMoment { get; set; } = null;
-
-        //public string Code { get; set; } 
-
+        public List<CampaignEditHistory> EditHistory { get; set; } = [];
     }
 
-    public enum CampaignType { TimeBased, RefBased } //RefBased means orders and wallets
+    public class CampaignEditHistory 
+    {
+        public string EditHash { get; set; }
+        public DateTime? EditMoment { get; set; } = null;
+        public string Changes { get; set; }
+    }
 
-    public enum CampaignState { NotRegistered, Registered, Canceled ,Expired }  
+
+    public enum CampaignState { Registered, Canceled ,Expired }  
 }

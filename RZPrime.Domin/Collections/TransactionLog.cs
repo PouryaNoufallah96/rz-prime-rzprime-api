@@ -14,6 +14,8 @@ namespace RZPrime.Domain.Collections
         public string TokenAmount { get; set; }
         public string USDTAmount { get; set; }
         public string Hash { get; set; }
+        public string CampaignReference { get; set; } = null;
+        public decimal? Discount { get; set; } = null;
         public decimal BlockNumber { get; set; }
         public BlockchainEventType EventType { get; set; }
         public TransactionStatus Status { get; set; }

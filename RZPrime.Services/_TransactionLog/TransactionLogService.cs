@@ -19,7 +19,6 @@ namespace RZPrime.Services._TransactionLog
         ILogger<TransactionLogRepository> _logger) : ITransactionLogService, IScopedDependency
     {
 
-       // do not need to log register,because backend register the order
         public async Task CreateOrderRegisteredTransactionLogAsync(OrderRegisteredLogData log)
         {
             var existsLog = await _transactionLogRepository.AsQueryable()
@@ -37,6 +36,7 @@ namespace RZPrime.Services._TransactionLog
                 return;
             }
 
+            var discountPercentage = (decimal)log.DiscountBps / 100m;
 
             var newLog = new TransactionLog
             {
@@ -48,12 +48,23 @@ namespace RZPrime.Services._TransactionLog
                 USDTAmount = "",
                 Hash = log.Hash,
                 BlockNumber = log.BlockNumber,
+                CampaignReference = log.CampaignId,
+                Discount = discountPercentage,
                 EventType = BlockchainEventType.OrderRegistered,
                 Status = TransactionStatus.Confirmed
             };
 
             await _transactionLogRepository.InsertOneAsync(newLog);
 
+            if(discountPercentage > 0)
+            {
+                await _orderRepository.FindOneAndUpdateAsync(
+                    filter: x => x.OrderId == log.OrderId,
+                    update: Builders<Order>.Update
+                        .Set(x => x.CampaignReference, log.CampaignId)
+                        .Set(x => x.CampaignDiscount, discountPercentage)
+                );
+            }
         }
 
         public async Task CreateOrderExecutedTransactionLogAsync(OrderExecutedLogData log)

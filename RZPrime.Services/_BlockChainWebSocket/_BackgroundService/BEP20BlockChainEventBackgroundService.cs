@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Nethereum.Contracts;
+using Nethereum.Hex.HexConvertors.Extensions;
 using Nethereum.Hex.HexTypes;
 using Nethereum.JsonRpc.WebSocketStreamingClient;
 using Nethereum.RPC.Eth.DTOs;
@@ -328,20 +329,20 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
                 var orderRegistered = log.DecodeEvent<OrderRegisteredEventDTO>();
                 if (orderRegistered != null)
                 {
-                    _logger.LogInformation("OrderRegistered: {OrderId} by {User}",
-                        orderRegistered.Event.OrderId, orderRegistered.Event.User);
 
                     SentrySdk.CaptureMessage(
                         $"OrderRegistered: {orderRegistered.Event.OrderId} by {orderRegistered.Event.User}"
                     );
-                    return;
+
+                    await LogOrderRegisteredEvent(orderRegistered, log);
+
+                    _orderLastProcessedBlock = BigInteger.Max(_orderLastProcessedBlock, log.BlockNumber.Value);
+
                 }
 
                 var orderExecuted = log.DecodeEvent<OrderExecutedEventDTO>();
                 if (orderExecuted != null)
                 {
-                    _logger.LogInformation("OrderExecuted: {OrderId} by {User}",
-                        orderExecuted.Event.OrderId, orderExecuted.Event.User);
 
                     SentrySdk.CaptureMessage(
                         $"OrderExecuted: {orderExecuted.Event.OrderId} by {orderExecuted.Event.User}"
@@ -349,14 +350,12 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
 
                     await LogOrderExecutedEvent(orderExecuted, log);
 
-                    _orderLastProcessedBlock = BigInteger.Max(_orderLastProcessedBlock, log.BlockNumber.Value + 1);
+                    _orderLastProcessedBlock = BigInteger.Max(_orderLastProcessedBlock, log.BlockNumber.Value);
                 }
 
                 var orderExpired = log.DecodeEvent<OrderExpiredEventDTO>();
                 if (orderExpired != null)
                 {
-                    _logger.LogInformation("OrderExpired: {OrderId} by {User}",
-                        orderExpired.Event.OrderId, orderExpired.Event.User);
 
                     SentrySdk.CaptureMessage(
                         $"OrderExpired: {orderExpired.Event.OrderId} by {orderExpired.Event.User}"
@@ -364,7 +363,7 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
 
                     await LogOrderExpiredEvent(orderExpired, log);
 
-                    _orderLastProcessedBlock = BigInteger.Max(_orderLastProcessedBlock, log.BlockNumber.Value + 1);
+                    _orderLastProcessedBlock = BigInteger.Max(_orderLastProcessedBlock, log.BlockNumber.Value);
                 }
 
 
@@ -375,53 +374,132 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
             }
         }
 
+        private async Task LogOrderRegisteredEvent(EventLog<OrderRegisteredEventDTO> eventLog, FilterLog log)
+        {
+            try
+            {
+                var campaignIdHex = ByteArray32ToHex(eventLog.Event.CampaignId);
+                var block = (long)log.BlockNumber.Value;
+
+
+                _logger.LogInformation(
+                   "OrderRegistered event logged successfully. OrderId: {OrderId}, User: {User}, TokenAmount: {TokenAmount}, CampaignId: {CampaignId}, DiscountBps: {DiscountBps}, BlockNumber: {BlockNumber}, TxHash: {TxHash}",
+                   eventLog.Event.OrderId,
+                   eventLog.Event.User,
+                   eventLog.Event.TokenAmount,
+                   campaignIdHex,
+                   eventLog.Event.DiscountBps,
+                   block,
+                   log.TransactionHash);
+
+
+                var transactionLog = new OrderRegisteredLogData
+                {
+                    OrderId = eventLog.Event.OrderId,
+                    Hash = log.TransactionHash,
+                    Address = log.Address,
+                    UserWallet = eventLog.Event.User,
+                    Status = TransactionStatus.Confirmed,
+                    BlockNumber = block,
+                    EventType = BlockchainEventType.OrderRegistered,
+                    TokenAmount = eventLog.Event.TokenAmount,
+                    CampaignId = campaignIdHex,
+                    DiscountBps = eventLog.Event.DiscountBps
+                };
+
+                await _transactionLogService.CreateOrderRegisteredTransactionLogAsync(transactionLog);
+
+                lock (_blockLock)
+                {
+                    _orderLastProcessedBlock = BigInteger.Max(_orderLastProcessedBlock, block);
+                }
+
+                _lastEventReceived = DateTime.UtcNow;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing OrderRegistered event for order {OrderId}. TxHash: {TxHash}",
+                    eventLog.Event.OrderId, log.TransactionHash);
+                throw;
+            }
+        }
+
         private async Task LogOrderExecutedEvent(EventLog<OrderExecutedEventDTO> eventLog, FilterLog log)
         {
-            _logger.LogInformation("Logged OrderExecuted event for order {OrderId}", eventLog.Event.OrderId);
-
-            var block = (long)log.BlockNumber.Value;
-            var transactionLog = new OrderExecutedLogData
+            try
             {
-                OrderId = eventLog.Event.OrderId,
-                Hash = log.TransactionHash,
-                Address = log.Address,
-                UserWallet = eventLog.Event.User,
-                Status = TransactionStatus.Confirmed,
-                BlockNumber = (long)log.BlockNumber.Value,
-                EventType = BlockchainEventType.OrderExecuted,
-                RzusdPaid = eventLog.Event.RzusdPaid,
-                UsdValue = 0,
-            };
+                var block = (long)log.BlockNumber.Value;
 
-            lock (_blockLock)
-            {
-                _orderLastProcessedBlock = BigInteger.Max(_orderLastProcessedBlock, block);
+                _logger.LogInformation(
+                  "OrderExecuted event logged successfully. OrderId: {OrderId}, User: {User}, RzusdPaid: {RzusdPaid}, UsdValue: {UsdValue}, BlockNumber: {BlockNumber}, TxHash: {TxHash}",
+                  eventLog.Event.OrderId,
+                  eventLog.Event.User,
+                  eventLog.Event.RzusdPaid,
+                  eventLog.Event.UsdValue,
+                  block,
+                  log.TransactionHash);
+
+
+                var transactionLog = new OrderExecutedLogData
+                {
+                    OrderId = eventLog.Event.OrderId,
+                    Hash = log.TransactionHash,
+                    Address = log.Address,
+                    UserWallet = eventLog.Event.User,
+                    Status = TransactionStatus.Confirmed,
+                    BlockNumber = block,
+                    EventType = BlockchainEventType.OrderExecuted,
+                    RzusdPaid = eventLog.Event.RzusdPaid,
+                    UsdValue = eventLog.Event.UsdValue,
+                };
+
+
+                await _transactionLogService.CreateOrderExecutedTransactionLogAsync(transactionLog);
+
+                _lastEventReceived = DateTime.UtcNow;
             }
-
-            await _transactionLogService.CreateOrderExecutedTransactionLogAsync(transactionLog);
-            _lastEventReceived = DateTime.UtcNow;
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing OrderExecuted event for order {OrderId}. TxHash: {TxHash}",
+                    eventLog.Event.OrderId, log.TransactionHash);
+                throw;
+            }
         }
 
         private async Task LogOrderExpiredEvent(EventLog<OrderExpiredEventDTO> eventLog, FilterLog log)
         {
-
-            _logger.LogInformation("Logged OrderExpired event for order {OrderId}", eventLog.Event.OrderId);
-
-            var block = (long)log.BlockNumber.Value;
-            var transactionLog = new OrderExpiredLogData
+            try
             {
-                OrderId = eventLog.Event.OrderId,
-                Hash = log.TransactionHash,
-                Address = log.Address,
-                UserWallet = eventLog.Event.User,
-                Status = TransactionStatus.Confirmed,
-                BlockNumber = (long)log.BlockNumber.Value,
-                EventType = BlockchainEventType.OrderExpired,
-            };
+                var block = (long)log.BlockNumber.Value;
 
+                _logger.LogInformation(
+                  "OrderExpired event logged successfully. OrderId: {OrderId}, User: {User}, BlockNumber: {BlockNumber}, TxHash: {TxHash}",
+                  eventLog.Event.OrderId,
+                  eventLog.Event.User,
+                  block,
+                  log.TransactionHash);
 
-            await _transactionLogService.CreateOrderExpiredTransactionLogAsync(transactionLog);
-            _lastEventReceived = DateTime.UtcNow;
+                var transactionLog = new OrderExpiredLogData
+                {
+                    OrderId = eventLog.Event.OrderId,
+                    Hash = log.TransactionHash,
+                    Address = log.Address,
+                    UserWallet = eventLog.Event.User,
+                    Status = TransactionStatus.Confirmed,
+                    BlockNumber = block,
+                    EventType = BlockchainEventType.OrderExpired,
+                };
+
+                await _transactionLogService.CreateOrderExpiredTransactionLogAsync(transactionLog);
+
+                _lastEventReceived = DateTime.UtcNow;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing OrderExpired event for order {OrderId}. TxHash: {TxHash}",
+                    eventLog.Event.OrderId, log.TransactionHash);
+                throw;
+            }
         }
 
         private async Task<HexBigInteger> GetOrderLastProcessedBlock(CancellationToken cancellationToken)
@@ -549,7 +627,24 @@ namespace RZPrime.Services._BlockChainWebSocket._BackgroundService
 
         #endregion
 
-     
+        private static string ByteArray32ToHex(byte[] bytes)
+        {
+            try
+            {
+                if (bytes == null)
+                    throw new ArgumentNullException(nameof(bytes));
+
+                if (bytes.Length != 32)
+                    throw new ArgumentException("Input must be exactly 32 bytes for bytes32");
+
+                return "0x" + bytes.ToHex();
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
         public override async Task StopAsync(CancellationToken cancellationToken)
         {
             if (_isDisposed) return;

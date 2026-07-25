@@ -3,88 +3,284 @@ using MongoDB.Driver;
 using MongoDB.Driver.Linq;
 using RZPrime.Domain.Collections;
 using RZPrime.Domain.Repositories.Contracts;
+using RZPrime.Services._BlockChain;
+using RZPrime.Services._BlockChain.DTOs;
 using RZPrime.Services._Campaign.DTOs;
 using RZPrime.Utilities.DTOs;
 using RZPrime.Utilities.Exceptions.Common;
+using System.Security.Cryptography;
 using static RZPrime.Utilities.Constants.RegisterMode;
 
 namespace RZPrime.Services._Campaign
 {
-    public class CampaignService(ICampaignRepository _campaignRepository, IMemoryCache _cache, IOrderRepository _orderRepository) : ICampaignService, IScopedDependency
+    public class CampaignService(ICampaignRepository _campaignRepository,
+        IMemoryCache _cache,
+        IWalletDiscountRepository _walletDiscountRepository,
+        IBlockChainService _blockChainService,
+        IOrderRepository _orderRepository) : ICampaignService, IScopedDependency
     {
-        private const string CampaignCacheKey = "ACTIVE_CAMPAIGNS";
 
 
+        
+
+
+
+
+        #region Banner & Discount Query
+
+        public async Task<CampaignBannerResult> GetCampaignBannerAsync(string walletAddress)
+        {
+            if (string.IsNullOrWhiteSpace(walletAddress))
+                throw new BadRequestException("Wallet address is required.");
+
+            var normalizedWallet = walletAddress.ToLower();
+
+           
+            var walletDiscount = await _walletDiscountRepository
+                .FindOneAsync(x => x.WalletAddress == normalizedWallet);
+
+            if (walletDiscount != null && walletDiscount.CurrentDiscount > 0)
+            {
+                return new CampaignBannerResult
+                {
+                    DiscountPercentage = walletDiscount.CurrentDiscount,
+                    MinUSDValue = 0,
+                    MaxUSDValue = decimal.MaxValue,
+                    MaxUsers = 0,
+                    IsWalletDiscount = true,
+                    CampaignReference = null
+                };
+            }
+ 
+            var activeCampaign = await _campaignRepository
+                .AsQueryable()
+                .Where(x =>
+                    x.State == CampaignState.Registered &&
+                    x.FromOrderRegisterTime <= DateTime.UtcNow &&
+                    x.ToOrderRegisterTime >= DateTime.UtcNow)
+                .OrderByDescending(x => x.DiscountPercentage)
+                .FirstOrDefaultAsync();
+
+            if (activeCampaign == null)
+                return null;
+
+            return new CampaignBannerResult
+            {
+                DiscountPercentage = activeCampaign.DiscountPercentage,
+                MinUSDValue = activeCampaign.MinUSDValue,
+                MaxUSDValue = activeCampaign.MaxUSDValue,
+                MaxUsers = activeCampaign.MaxUsers,
+                IsWalletDiscount = false,
+                CampaignReference = activeCampaign.CampaignReference
+            };
+        }
+
+        #endregion
+
+        #region Wallet Discount Management
+
+        public async Task<WalletDiscountResult> SetWalletDiscountAsync(SetWalletDiscountRequest request)
+        {
+            if (request.DiscountPercentage < 0 || request.DiscountPercentage > 100)
+                throw new BadRequestException("Discount percentage must be between 0 and 100.");
+
+            var walletDiscount = await _walletDiscountRepository 
+               .FindOneAsync(x => x.WalletAddress.ToLower() == request.WalletAddress.ToLower());
+
+            if(walletDiscount == null)
+            {
+                walletDiscount = new WalletDiscount
+                {
+                    WalletAddress = request.WalletAddress.ToLower(),
+                    CurrentDiscount = 0,
+                    History = new List<WalletDiscountHistory>()
+                };
+                await _walletDiscountRepository.InsertOneAsync(walletDiscount);
+            }
+
+            if(walletDiscount.CurrentDiscount == request.DiscountPercentage)
+               throw new BadRequestException("The wallet already has the specified discount percentage.");
+
+
+            var blockchainResult = await _blockChainService.SetDiscountForAsync(request.WalletAddress, request.DiscountPercentage);
+
+            if (blockchainResult == null || !blockchainResult.Success || string.IsNullOrEmpty(blockchainResult.TransactionHash))
+                throw new BaseException("Failed to set wallet discount on blockchain.");
+
+            walletDiscount.CurrentDiscount = request.DiscountPercentage;
+            
+            walletDiscount.History.Add(new WalletDiscountHistory
+            {
+                RegisterMoment = DateTime.UtcNow,
+                RegisterHash = blockchainResult.TransactionHash,
+                Discount = request.DiscountPercentage
+            });
+
+            await _walletDiscountRepository.ReplaceOneAsync(walletDiscount);
+
+            return new WalletDiscountResult
+            {
+                WalletAddress = walletDiscount.WalletAddress,
+                CurrentDiscount = walletDiscount.CurrentDiscount,
+                TransactionHash = blockchainResult.TransactionHash,
+                AppliedAt = DateTime.UtcNow
+            };
+        }
+
+        public async Task<WalletDiscountResult> CancelWalletDiscountAsync(CancelWalletDiscountRequest request)
+        {
+            return await SetWalletDiscountAsync(new SetWalletDiscountRequest
+            {
+                WalletAddress = request.WalletAddress,
+                DiscountPercentage = 0
+            });
+        }
+
+        #endregion
+
+
+
+        #region Campaign Management
         public async Task<bool> CreateCampaignAsync(CreateCampaignUpdate update)
         {
-            if (update.ExpireMoment == null)
-                throw new BadRequestException("Campaign expire moment is required.");
+            ValidateCreateCampaignInputs(update);
 
-            if (update.ExpireMoment <= DateTime.UtcNow)
-                throw new BadRequestException("Campaign expire moment must be in the future.");
+            var hasDuplicate = await _campaignRepository
+                .AsQueryable()
+                .AnyAsync(x =>
+                    x.State == CampaignState.Registered &&
+                    x.FromOrderRegisterTime <= update.ToOrderRegisterTime &&
+                    x.ToOrderRegisterTime >= update.FromOrderRegisterTime);
 
-            if (update.DiscountPercentage < 0 || update.DiscountPercentage > 100)
-                throw new BadRequestException("Campaign discount percentage must be between 0 and 100.");
-
-            if (update.Type == CampaignType.TimeBased)
-            {
-                if (update.FromOrderRegisterTime == null || update.ToOrderRegisterTime == null)
-                    throw new BadRequestException("Campaign time is required.");
-
-                if (update.FromOrderRegisterTime >= update.ToOrderRegisterTime)
-                    throw new BadRequestException("Campaign time range is invalid.");
-
-                if (update.ExpireMoment < update.ToOrderRegisterTime)
-                    throw new BadRequestException("Campaign expire moment must be greater than or equal to ToOrderRegisterTime.");
-
-                var hasDuplicate = await _campaignRepository
-                    .AsQueryable()
-                    .AnyAsync(x =>
-                        x.State == CampaignState.Registered &&
-                        x.Type == CampaignType.TimeBased &&
-                        x.FromOrderRegisterTime <= update.ToOrderRegisterTime &&
-                        x.ToOrderRegisterTime >= update.FromOrderRegisterTime);
-
-                if (hasDuplicate)
-                    throw new BadRequestException("Another time based campaign already exists in this time range.");
-            }
-            else if (update.Type == CampaignType.RefBased)
-            {
-                if ((update.Orders == null || !update.Orders.Any()) &&
-                    (update.Wallets == null || !update.Wallets.Any()))
-                    throw new BadRequestException("Campaign orders or wallets are required.");
-            }
-            else
-            {
-                throw new BadRequestException("Invalid campaign type.");
-            }
+            if (hasDuplicate)
+                throw new BadRequestException("Another time based campaign already exists in this time range.");
 
             var campaign = new Campaign
             {
-                CampaignReference = Guid.NewGuid().ToString("N"),
-
+                CampaignReference = GenerateBytes32HexId(),
                 CreatedMoment = DateTime.UtcNow,
-                State = CampaignState.NotRegistered,
-                Type = update.Type,
-                ExpireMoment = update.ExpireMoment,
                 DiscountPercentage = update.DiscountPercentage,
-
-                FromOrderRegisterTime = update.Type == CampaignType.TimeBased ? update.FromOrderRegisterTime : null,
-                ToOrderRegisterTime = update.Type == CampaignType.TimeBased ? update.ToOrderRegisterTime : null,
-
-                Orders = update.Type == CampaignType.RefBased ? update.Orders?.Select(x => x.ToLowerInvariant()).ToList() ?? [] : null,
-                Wallets = update.Type == CampaignType.RefBased ? update.Wallets?.Select(x => x.ToLowerInvariant()).ToList() ?? [] : null
+                FromOrderRegisterTime = update.FromOrderRegisterTime,
+                ToOrderRegisterTime = update.ToOrderRegisterTime,
+                MaxUsers = update.MaxUsers,
+                MinUSDValue = update.MinUSDValue,
+                MaxUSDValue = update.MaxUSDValue,
+                FirstOrder = update.FirstOrder,
+                State = CampaignState.Registered,
+                RemoveHash = null,
+                RegisterHash = null,
+                RegisterMoment = null,
+                RemoveMoment = null,
             };
 
-            //TODO : Send to blockchain for registration
+            var blockchainResult = await _blockChainService.CreateCampaignAsync(new CreateCampaignOnBlockChainRequest
+            {
+                CampaignReference = campaign.CampaignReference,
+                FromOrderRegisterTime = campaign.FromOrderRegisterTime,
+                ToOrderRegisterTime = campaign.ToOrderRegisterTime,
+                MaxUsers = campaign.MaxUsers,
+                MinUSDValue = campaign.MinUSDValue,
+                MaxUSDValue = campaign.MaxUSDValue,
+                DiscountPercentage = campaign.DiscountPercentage,
+                FirstOrder = campaign.FirstOrder
+            });
+
+            if (blockchainResult == null || !blockchainResult.Success || string.IsNullOrEmpty(blockchainResult.TransactionHash))
+                throw new BaseException("Failed to create campaign on blockchain.");
+
+            var registerHash = blockchainResult.TransactionHash;
+            campaign.RegisterHash = registerHash;
+            campaign.RegisterMoment = DateTime.UtcNow;
 
             await _campaignRepository.InsertOneAsync(campaign);
 
-            await RefreshCacheAsync();
+            return true;
+        }
+       
+        public async Task<bool> EditCampaignAsync(EditCampaignUpdate update)
+        {
+            ValidateCreateCampaignInputs(update);
+
+            var existing = await _campaignRepository
+                .FindOneAsync(x => x.CampaignReference == update.CampaignReference && x.State == CampaignState.Registered);
+
+            if (existing == null)
+                throw new BadRequestException("Campaign not found or is not in a registered state.");
+
+            var changesList = new List<string>();
+
+            if (existing.FromOrderRegisterTime != update.FromOrderRegisterTime)
+                changesList.Add($"FromOrderRegisterTime: {existing.FromOrderRegisterTime:u} → {update.FromOrderRegisterTime:u}");
+
+            if (existing.ToOrderRegisterTime != update.ToOrderRegisterTime)
+                changesList.Add($"ToOrderRegisterTime: {existing.ToOrderRegisterTime:u} → {update.ToOrderRegisterTime:u}");
+
+            if (existing.MaxUsers != update.MaxUsers)
+                changesList.Add($"MaxUsers: {existing.MaxUsers} → {update.MaxUsers}");
+
+            if (existing.MinUSDValue != update.MinUSDValue)
+                changesList.Add($"MinUSDValue: {existing.MinUSDValue} → {update.MinUSDValue}");
+
+            if (existing.MaxUSDValue != update.MaxUSDValue)
+                changesList.Add($"MaxUSDValue: {existing.MaxUSDValue} → {update.MaxUSDValue}");
+
+            if (existing.DiscountPercentage != update.DiscountPercentage)
+                changesList.Add($"DiscountPercentage: {existing.DiscountPercentage} → {update.DiscountPercentage}");
+
+            if (existing.FirstOrder != update.FirstOrder)
+                changesList.Add($"FirstOrder: {existing.FirstOrder} → {update.FirstOrder}");
+
+            if (changesList.Count == 0)
+                return true;
+
+            var hasDuplicate = await _campaignRepository
+                .AsQueryable()
+                .AnyAsync(x =>
+                    x.CampaignReference != update.CampaignReference &&
+                    x.State == CampaignState.Registered &&
+                    x.FromOrderRegisterTime <= update.ToOrderRegisterTime &&
+                    x.ToOrderRegisterTime >= update.FromOrderRegisterTime);
+
+            if (hasDuplicate)
+                throw new BadRequestException("Another time based campaign already exists in this time range.");
+
+            var blockchainResult = await _blockChainService.EditCampaignAsync(new CreateCampaignOnBlockChainRequest
+            {
+                CampaignReference = existing.CampaignReference,
+                FromOrderRegisterTime = update.FromOrderRegisterTime,
+                ToOrderRegisterTime = update.ToOrderRegisterTime,
+                MaxUsers = update.MaxUsers,
+                MinUSDValue = update.MinUSDValue,
+                MaxUSDValue = update.MaxUSDValue,
+                DiscountPercentage = update.DiscountPercentage,
+                FirstOrder = update.FirstOrder
+            });
+
+            if (blockchainResult == null || !blockchainResult.Success || string.IsNullOrEmpty(blockchainResult.TransactionHash))
+                throw new BaseException("Failed to edit campaign on blockchain.");
+
+            existing.FromOrderRegisterTime = update.FromOrderRegisterTime;
+            existing.ToOrderRegisterTime = update.ToOrderRegisterTime;
+            existing.MaxUsers = update.MaxUsers;
+            existing.MinUSDValue = update.MinUSDValue;
+            existing.MaxUSDValue = update.MaxUSDValue;
+            existing.DiscountPercentage = update.DiscountPercentage;
+            existing.FirstOrder = update.FirstOrder;
+            existing.RegisterHash = blockchainResult.TransactionHash;
+            existing.RegisterMoment = DateTime.UtcNow;
+
+            existing.EditHistory.Add(new CampaignEditHistory
+            {
+                EditHash = blockchainResult.TransactionHash,
+                EditMoment = DateTime.UtcNow,
+                Changes = string.Join(" | ", changesList)
+            });
+
+            await _campaignRepository.ReplaceOneAsync(existing);
 
             return true;
         }
-
+        
         public async Task<bool> CancelCampaignAsync(CancelCampaignUpdate update)
         {
             var campaign = await _campaignRepository
@@ -93,24 +289,27 @@ namespace RZPrime.Services._Campaign
                     x.CampaignReference == update.CampaignReference);
 
             if (campaign == null)
-                throw new Exception("Campaign not found.");
+                throw new BaseException("Campaign not found.");
 
-            if (campaign.State == CampaignState.Canceled)
+            if (campaign.State != CampaignState.Registered)
                 return true;
 
             campaign.State = CampaignState.Canceled;
             campaign.ModifiedMoment = DateTime.UtcNow;
 
-            //TODO : Send to blockchain for cancellation
-            //campaign.CancelHash = Guid.NewGuid().ToString("N");
-            //campaign.CancelMoment = DateTime.UtcNow;
+            var blockchainResult = await _blockChainService.RemoveCampaignAsync(update.CampaignReference);
+
+            if (blockchainResult == null || !blockchainResult.Success || string.IsNullOrEmpty(blockchainResult.TransactionHash))
+                throw new BaseException("Failed to cancel campaign on blockchain.");
+
+            campaign.RemoveHash = blockchainResult.TransactionHash;
+            campaign.RemoveMoment = DateTime.UtcNow;
+
             await _campaignRepository.ReplaceOneAsync(campaign);
-            await RemoveCampaignFromOrdersAsync(new List<string> { update.CampaignReference });
-            await RefreshCacheAsync();
 
             return true;
         }
-
+     
         public async Task<CampaignListResult> GetAllCampaignsAsync(Pagination pagination)
         {
             var skip = (pagination.Page - 1) * pagination.Size;
@@ -131,13 +330,19 @@ namespace RZPrime.Services._Campaign
                 ModifiedMoment = x.ModifiedMoment,
                 CampaignReference = x.CampaignReference,
                 State = x.State,
-                Type = x.Type,
                 DiscountPercentage = x.DiscountPercentage,
                 FromOrderRegisterTime = x.FromOrderRegisterTime,
                 ToOrderRegisterTime = x.ToOrderRegisterTime,
-                Orders = x.Orders,
-                Wallets = x.Wallets,
-                ExpireMoment = x.ExpireMoment,
+                RemoveHash = x.RemoveHash,
+                EditHistory = x.EditHistory,
+                FirstOrder = x.FirstOrder,
+                MaxUsers = x.MaxUsers,
+                MinUSDValue = x.MinUSDValue,
+                MaxUSDValue = x.MaxUSDValue,
+                RegisterHash = x.RegisterHash,
+                RegisterMoment = x.RegisterMoment,
+                RemoveMoment = x.RemoveMoment,
+
             }).ToList();
 
             return new CampaignListResult
@@ -150,165 +355,81 @@ namespace RZPrime.Services._Campaign
 
         public async Task<List<Campaign>> GetAvailableCampaignsAsync()
         {
-            if (_cache.TryGetValue(CampaignCacheKey, out List<Campaign>? campaigns))
-                return campaigns!;
-
-            campaigns = await _campaignRepository
+            
+            var campaigns = await _campaignRepository
                 .AsQueryable()
-                .Where(x => x.State == CampaignState.Registered && x.ExpireMoment > DateTime.UtcNow)
+                .Where(x => x.State == CampaignState.Registered && x.FromOrderRegisterTime <= DateTime.UtcNow && x.ToOrderRegisterTime >= DateTime.UtcNow)
                 .OrderByDescending(x => x.DiscountPercentage)
                 .ToListAsync();
 
-            _cache.Set(
-                CampaignCacheKey,
-                campaigns);
-
             return campaigns;
         }
-
-        public async Task<Campaign?> GetBestCampaignAsync(string walletAddress, string orderId, DateTime orderRegisteredMoment)
-        {
-            var campaigns = await GetAvailableCampaignsAsync();
-            walletAddress = walletAddress.ToLowerInvariant();
-            orderId = orderId.ToLowerInvariant();
-
-            return campaigns.FirstOrDefault(c =>
-            {
-                return c.Type switch
-                {
-                    CampaignType.TimeBased =>
-                        c.FromOrderRegisterTime.HasValue &&
-                        c.ToOrderRegisterTime.HasValue &&
-                        orderRegisteredMoment >= c.FromOrderRegisterTime &&
-                        orderRegisteredMoment <= c.ToOrderRegisterTime,
-
-                    CampaignType.RefBased =>
-                        c.Orders.Contains(orderId) &&
-                        c.Wallets.Contains(walletAddress),
-
-                    _ => false
-                };
-            });
-        }
-
-        private async Task RemoveCampaignFromOrdersAsync(List<string> campaignReferences)
-        {
-            if (campaignReferences == null || campaignReferences.Count == 0)
-                return;
-
-            var filter = Builders<Order>.Filter.And(
-                Builders<Order>.Filter.Eq(x => x.State, OrderState.Registered),
-                Builders<Order>.Filter.In(x => x.CampaignReference, campaignReferences)
-            );
-
-            var update = Builders<Order>.Update
-                .Set(x => x.CampaignReference, null)
-                .Set(x => x.CampaignDiscount, null);
-
-            await _orderRepository.UpdateManyAsync(filter, update);
-        }
-
+  
         public async Task FindCampaignForExpireAsync()
         {
             var expiredCampaigns = await _campaignRepository.AsQueryable()
             .Where(x =>
             x.State == CampaignState.Registered &&
-            x.ExpireMoment <= DateTime.UtcNow)
+            x.ToOrderRegisterTime <= DateTime.UtcNow)
             .ToListAsync();
 
-            if (expiredCampaigns.Count == 0)
+            if (expiredCampaigns == null || !expiredCampaigns.Any())
                 return;
 
-            var campaignIds = expiredCampaigns
-                .Select(x => x.Id)
-                .ToList();
+            //await CancelCampaignAsync(new CancelCampaignUpdate
+            //{
+            //    CampaignReference = expiredCampaign.CampaignReference
+            //});
 
-            var filter = Builders<Campaign>.Filter
-                .In(x => x.Id, campaignIds);
-
-            var update = Builders<Campaign>.Update
-                .Set(x => x.State, CampaignState.Expired)
-                .Set(x => x.ModifiedMoment, DateTime.UtcNow);
-
-            await _campaignRepository.UpdateManyAsync(filter, update);
-            await RemoveCampaignFromOrdersAsync(expiredCampaigns.Select(x => x.CampaignReference).ToList());
-            await RefreshCacheAsync();
+            foreach (var expiredCampaign in expiredCampaigns)
+            {
+                expiredCampaign.State = CampaignState.Expired;
+                await _campaignRepository.ReplaceOneAsync(expiredCampaign);
+            }
         }
-
-        private async Task RefreshCacheAsync()
+         
+        private static void ValidateCreateCampaignInputs(CreateCampaignUpdate update)
         {
-            var campaigns = await _campaignRepository
-                .AsQueryable()
-                .Where(x =>
-                    x.State == CampaignState.Registered &&
-                    x.ExpireMoment > DateTime.UtcNow)
-                .OrderByDescending(x => x.DiscountPercentage)
-                .ToListAsync();
+            if (update.FromOrderRegisterTime == default || update.ToOrderRegisterTime == default)
+                throw new BadRequestException("Campaign start and end moments are required.");
 
-            _cache.Set(CampaignCacheKey, campaigns);
+            if (update.ToOrderRegisterTime <= DateTime.UtcNow || update.FromOrderRegisterTime <= DateTime.UtcNow)
+                throw new BadRequestException("Campaign start and end moments must be in the future.");
+
+            if (update.ToOrderRegisterTime <= update.FromOrderRegisterTime)
+                throw new BadRequestException("Campaign end moment must be after the start moment.");
+
+            if (update.MaxUSDValue <= 0)
+                throw new BadRequestException("Campaign max USD value must be greater than 0.");
+
+            if (update.MinUSDValue <= 0)
+                throw new BadRequestException("Campaign min USD value must be greater than 0.");
+
+            if (update.MinUSDValue > update.MaxUSDValue)
+                throw new BadRequestException("Campaign min USD value must be less than or equal to max USD value.");
+
+            if (update.MaxUsers <= 0)
+                throw new BadRequestException("Campaign max users must be greater than 0.");
+
+            if (update.DiscountPercentage < 0 || update.DiscountPercentage > 100)
+                throw new BadRequestException("Campaign discount percentage must be between 0 and 100.");
+        }
+        #endregion
+
+      
+
+        private string GenerateBytes32HexId()
+        {
+            var buffer = new byte[32];
+            RandomNumberGenerator.Fill(buffer);
+
+            var newId = BitConverter.ToString(buffer)
+                .Replace("-", "")
+                .ToLowerInvariant();
+
+            return "0x" + newId;
         }
 
-
-        //public async Task<CampaignResult?> GetAvailableCampaignAsync(string walletAddress, string orderId, DateTime orderRegısteredMoment)
-        //{
-        //    var campaigns = await _campaignRepository
-        //        .AsQueryable()
-        //        .Where(x => x.State == CampaignState.Registered)
-        //        .ToListAsync();
-
-        //    Campaign? bestCampaign = null;
-
-        //    foreach (var campaign in campaigns)
-        //    {
-        //        bool isValid = campaign.Type switch
-        //        {
-        //            CampaignType.TimeBased =>
-        //                campaign.FromOrderRegisterTime.HasValue &&
-        //                campaign.ToOrderRegisterTime.HasValue &&
-        //                orderRegısteredMoment >= campaign.FromOrderRegisterTime.Value &&
-        //                orderRegısteredMoment <= campaign.ToOrderRegisterTime.Value,
-
-        //            CampaignType.RefBased =>
-        //                campaign.Orders != null &&
-        //                campaign.Wallets != null &&
-        //                campaign.Orders.Any(x =>
-        //                    x.Equals(orderId, StringComparison.OrdinalIgnoreCase)) &&
-        //                campaign.Wallets.Any(x =>
-        //                    x.Equals(walletAddress, StringComparison.OrdinalIgnoreCase)),
-
-        //            _ => false
-        //        };
-
-        //        if (!isValid)
-        //            continue;
-
-        //        if (bestCampaign == null ||
-        //            campaign.DiscountPercentage > bestCampaign.DiscountPercentage)
-        //        {
-        //            bestCampaign = campaign;
-        //        }
-        //    }
-
-        //    if (bestCampaign == null)
-        //        return null;
-
-        //    return new CampaignResult
-        //    {
-        //        CreatedMoment = bestCampaign.CreatedMoment,
-        //        ModifiedMoment = bestCampaign.ModifiedMoment,
-        //        CampaignReference = bestCampaign.CampaignReference,
-
-        //        State = bestCampaign.State,
-        //        Type = bestCampaign.Type,
-        //        DiscountPercentage = bestCampaign.DiscountPercentage,
-
-        //        FromOrderRegisterTime = bestCampaign.FromOrderRegisterTime,
-        //        ToOrderRegisterTime = bestCampaign.ToOrderRegisterTime,
-
-        //        Orders = bestCampaign.Orders,
-        //        Wallets = bestCampaign.Wallets
-        //    };
-        //}
 
     }
 }

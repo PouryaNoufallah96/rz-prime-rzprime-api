@@ -26,7 +26,7 @@ namespace RZPrime.Api.Controllers.V1
 
     public class SystemStatus
     {
-        public bool Checked { get; set; } = false;  
+        public bool Checked { get; set; } = true;  
         public bool SystemHealth { get; set; } = true; 
         public bool SystemActivity { get; set; } = true;
         public string ActivityMessage { get; set; } = "All services is active.";
