@@ -173,6 +173,7 @@ publish/
 *.[Pp]ublish.xml
 *.azurePubxml
 # Note: Comment the next line if you want to checkin your web deploy settings,
+temp_auto_push.bat
 # but database connection strings (with potential passwords) will be unencrypted
 *.pubxml
 *.publishproj
@@ -347,4 +348,5 @@ healthchecksdb
 .env.local
 .env.development
 .env.production
-.env.test
+.env.testbranch_structure.json
+branch_structure.json
