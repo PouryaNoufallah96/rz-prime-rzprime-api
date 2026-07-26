@@ -208,6 +208,7 @@ namespace RZPrime.Services._Order
         /// <returns></returns>
         public async Task<OrderListResult> GetAllUserOrdersAsync(GetAllUserOrdersUpdate update, string userPublicKey, string walletAddress)
         {
+            var rzusdPrice = await _priceService.GetRZUSDPriceAsync();
 
             var pagination = update.Pagination;
 
@@ -253,7 +254,14 @@ namespace RZPrime.Services._Order
                 TokenName = order.TokenName,
                 TokenNetwork = order.TokenNetwork,
                 UserStageId = order.UserStageId,
-                PayAmountInWei = null,               
+                PayAmountInWei = order.State == OrderState.Registered
+                ? _blockChainService
+                    .ConvertToWei(
+                        ((decimal)order.FinalAmount *
+                         (1 - ((order.CampaignDiscount ?? 0) / 100)))
+                         / rzusdPrice)
+                    .ToString()
+                : order.PayAmountInWei,
                 TokenAmountInWei = order.TokenAmountInWei,
                 TransactionsMetaData = order.TransactionsMetaData,
                 CampaignDiscount = order.CampaignDiscount,
