@@ -49,6 +49,7 @@ namespace RZPrime.Services._Order
         /// <exception cref="BaseException"></exception>
         public async Task<SubmitOrderResponseResult> SubmitOrderAsync(SubmitOrderUpdate update, string userPublicKey, string walletAddress)
         {
+            var rzusdPrice = await _priceService.GetRZUSDPriceAsync();
             if (update.SelectedStage != UserStageType.Regular) throw new BadRequestException("Selected stage is not available!");
             if (update.MonthDuration > 3) throw new BadRequestException("Maximum of Month duration is Three month");
 
@@ -84,7 +85,7 @@ namespace RZPrime.Services._Order
                 ChangeStateMoment = null,
                 Promotion = null,
                 TokenAmountInWei = _blockChainService.ConvertToWei(tokenQauntity, tokenData.PriceDecimalPlaces).ToString(),
-                PayAmountInWei = _blockChainService.ConvertToWei(finalAmount).ToString(),
+                PayAmountInWei = null
             };
 
             try
